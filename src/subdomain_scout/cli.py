@@ -26,6 +26,17 @@ def main(argv: list[str] | None = None) -> int:
     p_scan.add_argument("--timeout", type=float, default=3.0)
     p_scan.add_argument("--concurrency", type=int, default=20)
     p_scan.add_argument(
+        "--detect-wildcard",
+        action="store_true",
+        help="Best-effort wildcard DNS detection (marks matching records as status=wildcard)",
+    )
+    p_scan.add_argument(
+        "--wildcard-probes",
+        type=int,
+        default=2,
+        help="Number of random probes used for wildcard detection (>= 2)",
+    )
+    p_scan.add_argument(
         "--only-resolved",
         action="store_true",
         help="Only write records with status=resolved",
@@ -74,6 +85,8 @@ def _run_scan(args: argparse.Namespace) -> int:
             out_path=out_path,
             timeout=args.timeout,
             concurrency=args.concurrency,
+            detect_wildcard=bool(args.detect_wildcard),
+            wildcard_probes=args.wildcard_probes,
             only_resolved=bool(args.only_resolved),
         )
     except FileNotFoundError as e:
@@ -87,6 +100,7 @@ def _run_scan(args: argparse.Namespace) -> int:
         "scanned"
         f" attempted={summary.attempted}"
         f" resolved={summary.resolved}"
+        f" wildcard={summary.wildcard}"
         f" not_found={summary.not_found}"
         f" error={summary.error}"
         f" wrote={summary.written}"

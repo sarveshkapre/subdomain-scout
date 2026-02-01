@@ -30,8 +30,9 @@ See `PROJECT.md` for the canonical commands:
 - `--out -` support for piping NDJSON to stdout.
 - `--only-resolved` filtering, wordlist comment/blank-line handling, and per-record `error` field on resolver failures.
 - `diff` command to compare two NDJSON runs for monitoring/CI.
+- Best-effort wildcard DNS detection (`--detect-wildcard`) to reduce noisy “resolved” results.
 
 ## Next
 
-- Add optional wildcard-dns detection (best-effort heuristic) to reduce noisy “resolved” results.
 - Add “retry on transient errors” for resolver `error` records.
+- Add `--status` output filtering (resolved/not_found/error/wildcard) for more flexible pipelines.

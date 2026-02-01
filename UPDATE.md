@@ -7,6 +7,7 @@
 - Output filtering (`--only-resolved`) + more robust wordlist parsing (skip blanks/comments).
 - More reliable writes (atomic temp file + rename) and optional per-record `error` field for resolver failures.
 - `diff` command for comparing two runs (`subdomain-scout diff`).
+- Best-effort wildcard DNS detection (`--detect-wildcard`).
 
 ## How to try it
 

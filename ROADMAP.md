@@ -6,7 +6,7 @@
 
 ## v0.1.1
 
-- Concurrent scanning, stdout output, output filtering, and run diffs.
+- Concurrent scanning, stdout output, output filtering, run diffs, and wildcard detection.
 
 ## Next
 

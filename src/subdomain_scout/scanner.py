@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import secrets
 import socket
 import sys
 import time
@@ -60,6 +61,7 @@ class ScanSummary:
     attempted: int
     written: int
     resolved: int
+    wildcard: int
     not_found: int
     error: int
     elapsed_ms: int
@@ -108,22 +110,31 @@ def scan_domains_summary(
     timeout: float,
     concurrency: int = 20,
     only_resolved: bool = False,
+    detect_wildcard: bool = False,
+    wildcard_probes: int = 2,
 ) -> ScanSummary:
     if concurrency < 1:
         raise ValueError("concurrency must be >= 1")
     if timeout <= 0:
         raise ValueError("timeout must be > 0")
+    if detect_wildcard and wildcard_probes < 2:
+        raise ValueError("wildcard_probes must be >= 2 when detect_wildcard is enabled")
 
     start = time.time()
     attempted = 0
     written = 0
     resolved = 0
+    wildcard = 0
     not_found = 0
     error = 0
 
     prev_timeout = socket.getdefaulttimeout()
     socket.setdefaulttimeout(timeout)
     try:
+        wildcard_ips: set[str] | None = None
+        if detect_wildcard:
+            wildcard_ips = detect_wildcard_ips(domain, probes=wildcard_probes)
+
         executor: ThreadPoolExecutor | None = None
         if concurrency > 1:
             executor = ThreadPoolExecutor(max_workers=concurrency)
@@ -145,8 +156,19 @@ def scan_domains_summary(
 
             for res in results:
                 attempted += 1
+                if wildcard_ips and res.status == "resolved" and set(res.ips) == wildcard_ips:
+                    res = Result(
+                        subdomain=res.subdomain,
+                        ips=res.ips,
+                        status="wildcard",
+                        elapsed_ms=res.elapsed_ms,
+                        error=res.error,
+                    )
+
                 if res.status == "resolved":
                     resolved += 1
+                elif res.status == "wildcard":
+                    wildcard += 1
                 elif res.status == "not_found":
                     not_found += 1
                 else:
@@ -163,7 +185,24 @@ def scan_domains_summary(
         attempted=attempted,
         written=written,
         resolved=resolved,
+        wildcard=wildcard,
         not_found=not_found,
         error=error,
         elapsed_ms=_ms(start),
     )
+
+
+def detect_wildcard_ips(domain: str, *, probes: int = 2) -> set[str] | None:
+    hits: dict[frozenset[str], int] = {}
+    for _ in range(probes):
+        label = f"_sdscout-{secrets.token_hex(8)}"
+        res = _resolve(f"{label}.{domain}")
+        if res.status != "resolved" or not res.ips:
+            continue
+        ipset = frozenset(res.ips)
+        hits[ipset] = hits.get(ipset, 0) + 1
+
+    for ipset, count in hits.items():
+        if count >= 2:
+            return set(ipset)
+    return None
