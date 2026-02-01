@@ -9,6 +9,7 @@
 - `diff` command for comparing two runs (`subdomain-scout diff`).
 - Best-effort wildcard DNS detection (`--detect-wildcard`).
 - More flexible scan output filtering (`--status ...`) and retries for transient DNS errors (`--retries`).
+- Machine-readable summaries to stderr via `--summary-json` (for CI/pipelines).
 
 ## How to try it
 

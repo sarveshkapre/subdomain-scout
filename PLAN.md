@@ -32,8 +32,9 @@ See `PROJECT.md` for the canonical commands:
 - `diff` command to compare two NDJSON runs for monitoring/CI.
 - Best-effort wildcard DNS detection (`--detect-wildcard`) to reduce noisy “resolved” results.
 - More flexible output filtering (`--status ...`) and retries for transient resolver failures.
+- Machine-readable scan/diff summaries to stderr (`--summary-json`).
 
 ## Next
 
 - Add “retry on transient errors” reporting (e.g., record retry count) for easier troubleshooting.
-- Add `--summary-json` for machine-readable scan/diff summaries (for CI pipelines).
+- Add `--summary-json` support for machine-readable scan/diff summaries (for CI pipelines).

@@ -26,6 +26,11 @@ def main(argv: list[str] | None = None) -> int:
     p_scan.add_argument("--timeout", type=float, default=3.0)
     p_scan.add_argument("--concurrency", type=int, default=20)
     p_scan.add_argument(
+        "--summary-json",
+        action="store_true",
+        help="Print scan summary as JSON to stderr",
+    )
+    p_scan.add_argument(
         "--status",
         action="append",
         choices=["resolved", "not_found", "error", "wildcard"],
@@ -72,6 +77,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_diff.add_argument("--summary-only", action="store_true", help="Only print summary to stderr")
     p_diff.add_argument(
+        "--summary-json",
+        action="store_true",
+        help="Print diff summary as JSON to stderr",
+    )
+    p_diff.add_argument(
         "--fail-on-changes", action="store_true", help="Exit non-zero if any changes"
     )
     p_diff.add_argument(
@@ -115,18 +125,36 @@ def _run_scan(args: argparse.Namespace) -> int:
         print(f"error: {e}", file=sys.stderr)
         return 2
     dest = "stdout" if out_path is None else str(out_path)
-    print(
-        "scanned"
-        f" attempted={summary.attempted}"
-        f" resolved={summary.resolved}"
-        f" wildcard={summary.wildcard}"
-        f" not_found={summary.not_found}"
-        f" error={summary.error}"
-        f" wrote={summary.written}"
-        f" elapsed_ms={summary.elapsed_ms}"
-        f" out={dest}",
-        file=sys.stderr,
-    )
+    if args.summary_json:
+        sys.stderr.write(
+            json.dumps(
+                {
+                    "kind": "scan_summary",
+                    "attempted": summary.attempted,
+                    "resolved": summary.resolved,
+                    "wildcard": summary.wildcard,
+                    "not_found": summary.not_found,
+                    "error": summary.error,
+                    "wrote": summary.written,
+                    "elapsed_ms": summary.elapsed_ms,
+                    "out": dest,
+                }
+            )
+            + "\n"
+        )
+    else:
+        print(
+            "scanned"
+            f" attempted={summary.attempted}"
+            f" resolved={summary.resolved}"
+            f" wildcard={summary.wildcard}"
+            f" not_found={summary.not_found}"
+            f" error={summary.error}"
+            f" wrote={summary.written}"
+            f" elapsed_ms={summary.elapsed_ms}"
+            f" out={dest}",
+            file=sys.stderr,
+        )
     return 1 if summary.error else 0
 
 
@@ -177,16 +205,32 @@ def _run_diff(args: argparse.Namespace) -> int:
             sys.stdout.write(json.dumps(event) + "\n")
 
     changed_total = summary.added + summary.removed + summary.changed
-    print(
-        "diff"
-        f" old={summary.old_total}"
-        f" new={summary.new_total}"
-        f" added={summary.added}"
-        f" removed={summary.removed}"
-        f" changed={summary.changed}"
-        f" unchanged={summary.unchanged}",
-        file=sys.stderr,
-    )
+    if args.summary_json:
+        sys.stderr.write(
+            json.dumps(
+                {
+                    "kind": "diff_summary",
+                    "old": summary.old_total,
+                    "new": summary.new_total,
+                    "added": summary.added,
+                    "removed": summary.removed,
+                    "changed": summary.changed,
+                    "unchanged": summary.unchanged,
+                }
+            )
+            + "\n"
+        )
+    else:
+        print(
+            "diff"
+            f" old={summary.old_total}"
+            f" new={summary.new_total}"
+            f" added={summary.added}"
+            f" removed={summary.removed}"
+            f" changed={summary.changed}"
+            f" unchanged={summary.unchanged}",
+            file=sys.stderr,
+        )
     return 1 if args.fail_on_changes and changed_total else 0
 
 

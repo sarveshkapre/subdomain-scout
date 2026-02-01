@@ -21,6 +21,7 @@ subdomain-scout scan --domain example.com --wordlist ./words.txt --out subdomain
 subdomain-scout scan --domain example.com --wordlist ./words.txt --out - --only-resolved
 subdomain-scout scan --domain example.com --wordlist ./words.txt --out - --detect-wildcard --only-resolved
 subdomain-scout scan --domain example.com --wordlist ./words.txt --out - --status resolved --status wildcard
+subdomain-scout scan --domain example.com --wordlist ./words.txt --out - --summary-json
 ```
 
 Each output line is a JSON object:
@@ -36,4 +37,5 @@ Compare two runs (especially useful with `--only-resolved` output):
 ```bash
 subdomain-scout diff --old old.jsonl --new new.jsonl --fail-on-changes
 subdomain-scout diff --old old.jsonl --new new.jsonl --resolved-only --only added --only changed
+subdomain-scout diff --old old.jsonl --new new.jsonl --summary-only --summary-json
 ```
