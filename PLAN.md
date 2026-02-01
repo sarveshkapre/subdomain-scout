@@ -29,8 +29,9 @@ See `PROJECT.md` for the canonical commands:
 - Concurrent scanning (`--concurrency`) with safe, atomic output writes.
 - `--out -` support for piping NDJSON to stdout.
 - `--only-resolved` filtering, wordlist comment/blank-line handling, and per-record `error` field on resolver failures.
+- `diff` command to compare two NDJSON runs for monitoring/CI.
 
 ## Next
 
-- Add `diff` command to compare two NDJSON runs (new/removed/resolved) for CI-friendly monitoring.
 - Add optional wildcard-dns detection (best-effort heuristic) to reduce noisy “resolved” results.
+- Add “retry on transient errors” for resolver `error` records.

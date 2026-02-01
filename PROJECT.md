@@ -26,4 +26,5 @@ subdomain-scout --help
 ```bash
 python -m subdomain_scout scan --domain example.com --wordlist words.txt --out subdomains.jsonl
 subdomain-scout scan --domain example.com --wordlist words.txt --out subdomains.jsonl --concurrency 20
+subdomain-scout diff --old subdomains-old.jsonl --new subdomains-new.jsonl --resolved-only --fail-on-changes
 ```

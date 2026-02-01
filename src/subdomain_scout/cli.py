@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
+import json
 import sys
 from pathlib import Path
 
+from .diff import compute_diff, load_jsonl
 from .scanner import scan_domains_summary
 
 
@@ -28,6 +31,31 @@ def main(argv: list[str] | None = None) -> int:
         help="Only write records with status=resolved",
     )
     p_scan.set_defaults(func=_run_scan)
+
+    p_diff = sub.add_parser("diff", help="Diff two JSONL/NDJSON scan outputs")
+    p_diff.add_argument("--old", required=True, help="Old JSONL path (use '-' for stdin)")
+    p_diff.add_argument("--new", required=True, help="New JSONL path (use '-' for stdin)")
+    p_diff.add_argument(
+        "--resolved-only",
+        action="store_true",
+        help="Only consider records with status=resolved",
+    )
+    p_diff.add_argument(
+        "--only",
+        action="append",
+        choices=["added", "removed", "changed"],
+        help="Only emit these change kinds (repeatable)",
+    )
+    p_diff.add_argument("--summary-only", action="store_true", help="Only print summary to stderr")
+    p_diff.add_argument(
+        "--fail-on-changes", action="store_true", help="Exit non-zero if any changes"
+    )
+    p_diff.add_argument(
+        "--skip-invalid",
+        action="store_true",
+        help="Skip invalid JSONL lines instead of failing",
+    )
+    p_diff.set_defaults(func=_run_diff)
 
     args = parser.parse_args(argv)
     return int(args.func(args))
@@ -67,6 +95,66 @@ def _run_scan(args: argparse.Namespace) -> int:
         file=sys.stderr,
     )
     return 1 if summary.error else 0
+
+
+def _run_diff(args: argparse.Namespace) -> int:
+    use_old_stdin = args.old == "-"
+    use_new_stdin = args.new == "-"
+    if use_old_stdin and use_new_stdin:
+        print("error: only one of --old/--new may be '-'", file=sys.stderr)
+        return 2
+
+    only_kinds = set(args.only or ["added", "removed", "changed"])
+
+    try:
+        with contextlib.ExitStack() as stack:
+            old_stream = (
+                sys.stdin
+                if use_old_stdin
+                else stack.enter_context(Path(args.old).open("r", encoding="utf-8"))
+            )
+            new_stream = (
+                sys.stdin
+                if use_new_stdin
+                else stack.enter_context(Path(args.new).open("r", encoding="utf-8"))
+            )
+
+            old = load_jsonl(
+                old_stream,
+                src=str(args.old),
+                resolved_only=bool(args.resolved_only),
+                skip_invalid=bool(args.skip_invalid),
+            )
+            new = load_jsonl(
+                new_stream,
+                src=str(args.new),
+                resolved_only=bool(args.resolved_only),
+                skip_invalid=bool(args.skip_invalid),
+            )
+    except FileNotFoundError as e:
+        print(f"error: file not found: {e.filename}", file=sys.stderr)
+        return 2
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+
+    summary, events = compute_diff(old, new)
+    for event in events:
+        if event["kind"] in only_kinds and not args.summary_only:
+            sys.stdout.write(json.dumps(event) + "\n")
+
+    changed_total = summary.added + summary.removed + summary.changed
+    print(
+        "diff"
+        f" old={summary.old_total}"
+        f" new={summary.new_total}"
+        f" added={summary.added}"
+        f" removed={summary.removed}"
+        f" changed={summary.changed}"
+        f" unchanged={summary.unchanged}",
+        file=sys.stderr,
+    )
+    return 1 if args.fail_on_changes and changed_total else 0
 
 
 if __name__ == "__main__":

@@ -10,3 +10,4 @@ This repo uses SemVer. `v0.x` may include breaking changes.
 
 - Concurrent scanning + `--only-resolved`.
 - `--out -` support for stdout/piping.
+- `diff` command to compare two runs.

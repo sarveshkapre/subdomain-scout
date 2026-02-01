@@ -26,3 +26,12 @@ Each output line is a JSON object:
 ```json
 {"subdomain":"www.example.com","ips":["93.184.216.34"],"status":"resolved","elapsed_ms":12}
 ```
+
+## Diff
+
+Compare two runs (especially useful with `--only-resolved` output):
+
+```bash
+subdomain-scout diff --old old.jsonl --new new.jsonl --fail-on-changes
+subdomain-scout diff --old old.jsonl --new new.jsonl --resolved-only --only added --only changed
+```
