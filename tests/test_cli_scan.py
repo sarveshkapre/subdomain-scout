@@ -1,0 +1,36 @@
+from __future__ import annotations
+
+import subprocess
+import sys
+from pathlib import Path
+
+
+def test_scan_stdout_does_not_include_summary(tmp_path: Path) -> None:
+    wordlist = tmp_path / "words.txt"
+    wordlist.write_text("www\n", encoding="utf-8")
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "subdomain_scout",
+            "scan",
+            "--domain",
+            "invalid.test",
+            "--wordlist",
+            str(wordlist),
+            "--out",
+            "-",
+            "--only-resolved",
+            "--timeout",
+            "0.1",
+            "--concurrency",
+            "1",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0
+    assert proc.stdout.strip() == ""
+    assert "scanned attempted=1" in proc.stderr
