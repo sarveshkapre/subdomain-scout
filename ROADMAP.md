@@ -4,6 +4,10 @@
 
 - Wordlist DNS scan with JSONL output.
 
+## v0.1.1
+
+- Concurrent scanning, stdout output, and output filtering.
+
 ## Next
 
 - CT log ingestion.

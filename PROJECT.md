@@ -18,10 +18,12 @@ make check
 
 ```bash
 python -m subdomain_scout --help
+subdomain-scout --help
 ```
 
 ## Example
 
 ```bash
 python -m subdomain_scout scan --domain example.com --wordlist words.txt --out subdomains.jsonl
+subdomain-scout scan --domain example.com --wordlist words.txt --out subdomains.jsonl --concurrency 20
 ```

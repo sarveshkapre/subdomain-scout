@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "subdomain-scout"
-version = "0.1.0"
+version = "0.1.1"
 description = "Subdomain discovery (CT/DNS/wordlists) + diffs + takeover signals + risk scoring"
 readme = "README.md"
 requires-python = ">=3.11"
