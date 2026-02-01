@@ -54,6 +54,7 @@ def test_scan_summary_json_is_parseable(tmp_path: Path) -> None:
             "--out",
             "-",
             "--summary-json",
+            "--only-resolved",
             "--timeout",
             "0.1",
             "--concurrency",
@@ -68,3 +69,34 @@ def test_scan_summary_json_is_parseable(tmp_path: Path) -> None:
     assert payload["kind"] == "scan_summary"
     assert payload["attempted"] == 1
     assert payload["out"] == "stdout"
+
+
+def test_scan_supports_wordlist_stdin(tmp_path: Path) -> None:
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "subdomain_scout",
+            "scan",
+            "--domain",
+            "invalid.test",
+            "--wordlist",
+            "-",
+            "--out",
+            "-",
+            "--summary-json",
+            "--only-resolved",
+            "--timeout",
+            "0.1",
+            "--concurrency",
+            "1",
+        ],
+        input="www\n",
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0
+    assert proc.stdout.strip() == ""
+    payload = json.loads(proc.stderr.strip())
+    assert payload["attempted"] == 1

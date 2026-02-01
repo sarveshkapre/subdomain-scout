@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from .diff import compute_diff, load_jsonl
-from .scanner import scan_domains_summary
+from .scanner import scan_domains_summary, scan_domains_summary_lines
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -17,7 +17,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="cmd", required=True)
     p_scan = sub.add_parser("scan", help="Scan subdomains from wordlist")
     p_scan.add_argument("--domain", required=True)
-    p_scan.add_argument("--wordlist", required=True)
+    p_scan.add_argument("--wordlist", required=True, help="Wordlist path (use '-' for stdin)")
     p_scan.add_argument(
         "--out",
         default="subdomains.jsonl",
@@ -105,19 +105,34 @@ def _run_scan(args: argparse.Namespace) -> int:
         return 2
     out_path = None if args.out == "-" else Path(args.out)
     try:
-        summary = scan_domains_summary(
-            domain=domain,
-            wordlist=Path(args.wordlist),
-            out_path=out_path,
-            timeout=args.timeout,
-            concurrency=args.concurrency,
-            statuses=set(args.status) if args.status else None,
-            detect_wildcard=bool(args.detect_wildcard),
-            wildcard_probes=args.wildcard_probes,
-            only_resolved=bool(args.only_resolved),
-            retries=args.retries,
-            retry_backoff_ms=args.retry_backoff_ms,
-        )
+        if args.wordlist == "-":
+            summary = scan_domains_summary_lines(
+                domain=domain,
+                wordlist_lines=sys.stdin,
+                out_path=out_path,
+                timeout=args.timeout,
+                concurrency=args.concurrency,
+                statuses=set(args.status) if args.status else None,
+                detect_wildcard=bool(args.detect_wildcard),
+                wildcard_probes=args.wildcard_probes,
+                only_resolved=bool(args.only_resolved),
+                retries=args.retries,
+                retry_backoff_ms=args.retry_backoff_ms,
+            )
+        else:
+            summary = scan_domains_summary(
+                domain=domain,
+                wordlist=Path(args.wordlist),
+                out_path=out_path,
+                timeout=args.timeout,
+                concurrency=args.concurrency,
+                statuses=set(args.status) if args.status else None,
+                detect_wildcard=bool(args.detect_wildcard),
+                wildcard_probes=args.wildcard_probes,
+                only_resolved=bool(args.only_resolved),
+                retries=args.retries,
+                retry_backoff_ms=args.retry_backoff_ms,
+            )
     except FileNotFoundError as e:
         print(f"error: file not found: {e.filename}", file=sys.stderr)
         return 2

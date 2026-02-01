@@ -22,6 +22,7 @@ subdomain-scout scan --domain example.com --wordlist ./words.txt --out - --only-
 subdomain-scout scan --domain example.com --wordlist ./words.txt --out - --detect-wildcard --only-resolved
 subdomain-scout scan --domain example.com --wordlist ./words.txt --out - --status resolved --status wildcard
 subdomain-scout scan --domain example.com --wordlist ./words.txt --out - --summary-json
+printf "www\napi\n" | subdomain-scout scan --domain example.com --wordlist - --out - --only-resolved
 ```
 
 Each output line is a JSON object:

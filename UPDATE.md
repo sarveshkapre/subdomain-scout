@@ -10,6 +10,7 @@
 - Best-effort wildcard DNS detection (`--detect-wildcard`).
 - More flexible scan output filtering (`--status ...`) and retries for transient DNS errors (`--retries`).
 - Machine-readable summaries to stderr via `--summary-json` (for CI/pipelines).
+- Accept stdin wordlists via `--wordlist -`.
 
 ## How to try it
 

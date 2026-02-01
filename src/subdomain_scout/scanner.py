@@ -114,20 +114,24 @@ class ScanSummary:
     elapsed_ms: int
 
 
+def _iter_labels_lines(lines: Iterable[str]) -> Iterable[str]:
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        label = line.split(maxsplit=1)[0].strip(".")
+        if not label or label.startswith("#"):
+            continue
+        yield label
+
+
 def _iter_labels(wordlist: Path) -> Iterable[str]:
     with wordlist.open("r", encoding="utf-8") as fh:
-        for raw_line in fh:
-            line = raw_line.strip()
-            if not line or line.startswith("#"):
-                continue
-            label = line.split(maxsplit=1)[0].strip(".")
-            if not label or label.startswith("#"):
-                continue
-            yield label
+        yield from _iter_labels_lines(fh)
 
 
-def _iter_fqdns(domain: str, wordlist: Path) -> Iterable[str]:
-    for label in _iter_labels(wordlist):
+def _iter_fqdns(domain: str, labels: Iterable[str]) -> Iterable[str]:
+    for label in labels:
         yield f"{label}.{domain}"
 
 
@@ -149,19 +153,18 @@ def scan_domains(domain: str, wordlist: Path, out_path: Path, timeout: float) ->
     return 0
 
 
-def scan_domains_summary(
+def _scan_core(
     *,
     domain: str,
-    wordlist: Path,
+    labels: Iterable[str],
     out_path: Path | None,
     timeout: float,
-    concurrency: int = 20,
-    only_resolved: bool = False,
-    statuses: set[str] | None = None,
-    detect_wildcard: bool = False,
-    wildcard_probes: int = 2,
-    retries: int = 0,
-    retry_backoff_ms: int = 50,
+    concurrency: int,
+    statuses: set[str] | None,
+    detect_wildcard: bool,
+    wildcard_probes: int,
+    retries: int,
+    retry_backoff_ms: int,
 ) -> ScanSummary:
     if concurrency < 1:
         raise ValueError("concurrency must be >= 1")
@@ -178,10 +181,6 @@ def scan_domains_summary(
     not_found = 0
     error = 0
 
-    if only_resolved and statuses is not None:
-        raise ValueError("only_resolved and statuses cannot both be set")
-    if only_resolved:
-        statuses = {"resolved"}
     allowed_statuses = {"resolved", "wildcard", "not_found", "error"}
     if statuses is not None:
         unknown = statuses - allowed_statuses
@@ -207,7 +206,7 @@ def scan_domains_summary(
                 stack.enter_context(executor)
 
             out, _tmp_path = stack.enter_context(_output_stream(out_path))
-            names = _iter_fqdns(domain, wordlist)
+            names = _iter_fqdns(domain, labels)
 
             if executor is None:
                 results: Iterable[Result] = (run_one(name) for name in names)
@@ -223,6 +222,8 @@ def scan_domains_summary(
                         status="wildcard",
                         elapsed_ms=res.elapsed_ms,
                         error=res.error,
+                        error_type=res.error_type,
+                        error_code=res.error_code,
                     )
 
                 if res.status == "resolved":
@@ -249,6 +250,72 @@ def scan_domains_summary(
         not_found=not_found,
         error=error,
         elapsed_ms=_ms(start),
+    )
+
+
+def scan_domains_summary(
+    *,
+    domain: str,
+    wordlist: Path,
+    out_path: Path | None,
+    timeout: float,
+    concurrency: int = 20,
+    only_resolved: bool = False,
+    statuses: set[str] | None = None,
+    detect_wildcard: bool = False,
+    wildcard_probes: int = 2,
+    retries: int = 0,
+    retry_backoff_ms: int = 50,
+) -> ScanSummary:
+    if only_resolved and statuses is not None:
+        raise ValueError("only_resolved and statuses cannot both be set")
+    if only_resolved:
+        statuses = {"resolved"}
+    labels = _iter_labels(wordlist)
+    return _scan_core(
+        domain=domain,
+        labels=labels,
+        out_path=out_path,
+        timeout=timeout,
+        concurrency=concurrency,
+        statuses=statuses,
+        detect_wildcard=detect_wildcard,
+        wildcard_probes=wildcard_probes,
+        retries=retries,
+        retry_backoff_ms=retry_backoff_ms,
+    )
+
+
+def scan_domains_summary_lines(
+    *,
+    domain: str,
+    wordlist_lines: Iterable[str],
+    out_path: Path | None,
+    timeout: float,
+    concurrency: int = 20,
+    only_resolved: bool = False,
+    statuses: set[str] | None = None,
+    detect_wildcard: bool = False,
+    wildcard_probes: int = 2,
+    retries: int = 0,
+    retry_backoff_ms: int = 50,
+) -> ScanSummary:
+    if only_resolved and statuses is not None:
+        raise ValueError("only_resolved and statuses cannot both be set")
+    if only_resolved:
+        statuses = {"resolved"}
+    labels = _iter_labels_lines(wordlist_lines)
+    return _scan_core(
+        domain=domain,
+        labels=labels,
+        out_path=out_path,
+        timeout=timeout,
+        concurrency=concurrency,
+        statuses=statuses,
+        detect_wildcard=detect_wildcard,
+        wildcard_probes=wildcard_probes,
+        retries=retries,
+        retry_backoff_ms=retry_backoff_ms,
     )
 
 

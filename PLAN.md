@@ -33,8 +33,9 @@ See `PROJECT.md` for the canonical commands:
 - Best-effort wildcard DNS detection (`--detect-wildcard`) to reduce noisy “resolved” results.
 - More flexible output filtering (`--status ...`) and retries for transient resolver failures.
 - Machine-readable scan/diff summaries to stderr (`--summary-json`).
+- Wordlist input from stdin via `--wordlist -` for pipeline-friendly scans.
 
 ## Next
 
 - Add “retry on transient errors” reporting (e.g., record retry count) for easier troubleshooting.
-- Add `--summary-json` support for machine-readable scan/diff summaries (for CI pipelines).
+- Add per-record retry metadata for troubleshooting (retry count + last error).
