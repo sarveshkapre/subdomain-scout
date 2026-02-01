@@ -26,6 +26,12 @@ def main(argv: list[str] | None = None) -> int:
     p_scan.add_argument("--timeout", type=float, default=3.0)
     p_scan.add_argument("--concurrency", type=int, default=20)
     p_scan.add_argument(
+        "--status",
+        action="append",
+        choices=["resolved", "not_found", "error", "wildcard"],
+        help="Only write records with these statuses (repeatable)",
+    )
+    p_scan.add_argument(
         "--detect-wildcard",
         action="store_true",
         help="Best-effort wildcard DNS detection (marks matching records as status=wildcard)",
@@ -40,6 +46,13 @@ def main(argv: list[str] | None = None) -> int:
         "--only-resolved",
         action="store_true",
         help="Only write records with status=resolved",
+    )
+    p_scan.add_argument("--retries", type=int, default=0, help="Retries for transient DNS errors")
+    p_scan.add_argument(
+        "--retry-backoff-ms",
+        type=int,
+        default=50,
+        help="Base backoff for retries (exponential)",
     )
     p_scan.set_defaults(func=_run_scan)
 
@@ -77,6 +90,9 @@ def _run_scan(args: argparse.Namespace) -> int:
     if not domain:
         print("error: --domain must be non-empty", file=sys.stderr)
         return 2
+    if args.only_resolved and args.status:
+        print("error: --only-resolved and --status cannot both be set", file=sys.stderr)
+        return 2
     out_path = None if args.out == "-" else Path(args.out)
     try:
         summary = scan_domains_summary(
@@ -85,9 +101,12 @@ def _run_scan(args: argparse.Namespace) -> int:
             out_path=out_path,
             timeout=args.timeout,
             concurrency=args.concurrency,
+            statuses=set(args.status) if args.status else None,
             detect_wildcard=bool(args.detect_wildcard),
             wildcard_probes=args.wildcard_probes,
             only_resolved=bool(args.only_resolved),
+            retries=args.retries,
+            retry_backoff_ms=args.retry_backoff_ms,
         )
     except FileNotFoundError as e:
         print(f"error: file not found: {e.filename}", file=sys.stderr)

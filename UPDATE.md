@@ -8,6 +8,7 @@
 - More reliable writes (atomic temp file + rename) and optional per-record `error` field for resolver failures.
 - `diff` command for comparing two runs (`subdomain-scout diff`).
 - Best-effort wildcard DNS detection (`--detect-wildcard`).
+- More flexible scan output filtering (`--status ...`) and retries for transient DNS errors (`--retries`).
 
 ## How to try it
 

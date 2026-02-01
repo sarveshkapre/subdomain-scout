@@ -19,6 +19,8 @@ class Result:
     status: str
     elapsed_ms: int
     error: str | None = None
+    error_type: str | None = None
+    error_code: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
@@ -29,6 +31,10 @@ class Result:
         }
         if self.error is not None:
             payload["error"] = self.error
+        if self.error_type is not None:
+            payload["error_type"] = self.error_type
+        if self.error_code is not None:
+            payload["error_code"] = self.error_code
         return payload
 
 
@@ -47,9 +53,50 @@ def _resolve(name: str) -> Result:
         }
         if e.errno in not_found_errnos:
             return Result(subdomain=name, ips=[], status="not_found", elapsed_ms=_ms(start))
-        return Result(subdomain=name, ips=[], status="error", elapsed_ms=_ms(start), error=str(e))
+        return Result(
+            subdomain=name,
+            ips=[],
+            status="error",
+            elapsed_ms=_ms(start),
+            error=str(e),
+            error_type="gaierror",
+            error_code=e.errno,
+        )
     except OSError as e:
-        return Result(subdomain=name, ips=[], status="error", elapsed_ms=_ms(start), error=str(e))
+        return Result(
+            subdomain=name,
+            ips=[],
+            status="error",
+            elapsed_ms=_ms(start),
+            error=str(e),
+            error_type="oserror",
+            error_code=e.errno,
+        )
+
+
+def _is_retryable(res: Result) -> bool:
+    eai_again = getattr(socket, "EAI_AGAIN", None)
+    return res.status == "error" and res.error_type == "gaierror" and res.error_code == eai_again
+
+
+def _resolve_with_retries(name: str, *, retries: int, retry_backoff_ms: int) -> Result:
+    if retries < 0:
+        raise ValueError("retries must be >= 0")
+    if retry_backoff_ms < 0:
+        raise ValueError("retry_backoff_ms must be >= 0")
+
+    attempt = 0
+    while True:
+        res = _resolve(name)
+        if res.status != "error":
+            return res
+        if not _is_retryable(res):
+            return res
+        if attempt >= retries:
+            return res
+        if retry_backoff_ms:
+            time.sleep((retry_backoff_ms * (2**attempt)) / 1000.0)
+        attempt += 1
 
 
 def _ms(start: float) -> int:
@@ -110,8 +157,11 @@ def scan_domains_summary(
     timeout: float,
     concurrency: int = 20,
     only_resolved: bool = False,
+    statuses: set[str] | None = None,
     detect_wildcard: bool = False,
     wildcard_probes: int = 2,
+    retries: int = 0,
+    retry_backoff_ms: int = 50,
 ) -> ScanSummary:
     if concurrency < 1:
         raise ValueError("concurrency must be >= 1")
@@ -128,6 +178,16 @@ def scan_domains_summary(
     not_found = 0
     error = 0
 
+    if only_resolved and statuses is not None:
+        raise ValueError("only_resolved and statuses cannot both be set")
+    if only_resolved:
+        statuses = {"resolved"}
+    allowed_statuses = {"resolved", "wildcard", "not_found", "error"}
+    if statuses is not None:
+        unknown = statuses - allowed_statuses
+        if unknown:
+            raise ValueError(f"unknown statuses: {', '.join(sorted(unknown))}")
+
     prev_timeout = socket.getdefaulttimeout()
     socket.setdefaulttimeout(timeout)
     try:
@@ -140,7 +200,7 @@ def scan_domains_summary(
             executor = ThreadPoolExecutor(max_workers=concurrency)
 
         def run_one(name: str) -> Result:
-            return _resolve(name)
+            return _resolve_with_retries(name, retries=retries, retry_backoff_ms=retry_backoff_ms)
 
         with contextlib.ExitStack() as stack:
             if executor is not None:
@@ -174,7 +234,7 @@ def scan_domains_summary(
                 else:
                     error += 1
 
-                if only_resolved and res.status != "resolved":
+                if statuses is not None and res.status not in statuses:
                     continue
                 out.write(json.dumps(res.to_dict()) + "\n")
                 written += 1

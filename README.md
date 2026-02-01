@@ -20,6 +20,7 @@ make check
 subdomain-scout scan --domain example.com --wordlist ./words.txt --out subdomains.jsonl
 subdomain-scout scan --domain example.com --wordlist ./words.txt --out - --only-resolved
 subdomain-scout scan --domain example.com --wordlist ./words.txt --out - --detect-wildcard --only-resolved
+subdomain-scout scan --domain example.com --wordlist ./words.txt --out - --status resolved --status wildcard
 ```
 
 Each output line is a JSON object:

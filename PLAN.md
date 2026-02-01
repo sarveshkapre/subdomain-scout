@@ -31,8 +31,9 @@ See `PROJECT.md` for the canonical commands:
 - `--only-resolved` filtering, wordlist comment/blank-line handling, and per-record `error` field on resolver failures.
 - `diff` command to compare two NDJSON runs for monitoring/CI.
 - Best-effort wildcard DNS detection (`--detect-wildcard`) to reduce noisy “resolved” results.
+- More flexible output filtering (`--status ...`) and retries for transient resolver failures.
 
 ## Next
 
-- Add “retry on transient errors” for resolver `error` records.
-- Add `--status` output filtering (resolved/not_found/error/wildcard) for more flexible pipelines.
+- Add “retry on transient errors” reporting (e.g., record retry count) for easier troubleshooting.
+- Add `--summary-json` for machine-readable scan/diff summaries (for CI pipelines).
