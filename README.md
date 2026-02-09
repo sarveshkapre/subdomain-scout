@@ -22,13 +22,15 @@ subdomain-scout scan --domain example.com --wordlist ./words.txt --out - --only-
 subdomain-scout scan --domain example.com --wordlist ./words.txt --out - --detect-wildcard --only-resolved
 subdomain-scout scan --domain example.com --wordlist ./words.txt --out - --status resolved --status wildcard
 subdomain-scout scan --domain example.com --wordlist ./words.txt --out - --summary-json
+subdomain-scout scan --domain example.com --wordlist ./words.txt --out - --ct --ct-limit 200 --summary-json
 printf "www\napi\n" | subdomain-scout scan --domain example.com --wordlist - --out - --only-resolved
+subdomain-scout ct --domain example.com --out - --limit 50 --summary-json
 ```
 
 Each output line is a JSON object:
 
 ```json
-{"subdomain":"www.example.com","ips":["93.184.216.34"],"status":"resolved","elapsed_ms":12}
+{"subdomain":"www.example.com","ips":["93.184.216.34"],"status":"resolved","elapsed_ms":12,"attempts":1,"retries":0}
 ```
 
 ## Diff

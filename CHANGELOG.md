@@ -10,6 +10,11 @@
 - Add machine-readable summaries to stderr via `--summary-json` for `scan` and `diff`.
 - Allow `--wordlist -` to read labels from stdin for pipeline-friendly scans.
 - Improve robustness: ignore blank/commented wordlist lines, atomic output writes, and include `error` field on resolver failures.
+- Add `ct` command for certificate transparency ingestion via `crt.sh` with JSON summary support.
+- Add `scan --ct` to merge CT-derived labels into active DNS scans.
+- Add scan dedupe metrics (`labels_total`, `labels_unique`, `labels_deduped`, `ct_labels`) in summaries.
+- Add per-record retry metadata in scan output (`attempts`, `retries`).
+- Add strict domain/label validation to fail fast on malformed hostnames.
 
 ## v0.1.0 - 2026-01-31
 

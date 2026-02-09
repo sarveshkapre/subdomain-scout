@@ -28,6 +28,8 @@ python -m subdomain_scout scan --domain example.com --wordlist words.txt --out s
 subdomain-scout scan --domain example.com --wordlist words.txt --out subdomains.jsonl --concurrency 20
 subdomain-scout scan --domain example.com --wordlist words.txt --out - --detect-wildcard --only-resolved
 subdomain-scout scan --domain example.com --wordlist words.txt --out - --summary-json
+subdomain-scout scan --domain example.com --wordlist words.txt --out - --ct --ct-limit 200 --summary-json
+subdomain-scout ct --domain example.com --out - --limit 50 --summary-json
 printf "www\napi\n" | subdomain-scout scan --domain example.com --wordlist - --out - --only-resolved
 subdomain-scout diff --old subdomains-old.jsonl --new subdomains-new.jsonl --resolved-only --fail-on-changes
 subdomain-scout diff --old subdomains-old.jsonl --new subdomains-new.jsonl --summary-only --summary-json

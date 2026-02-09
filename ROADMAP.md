@@ -8,7 +8,13 @@
 
 - Concurrent scanning, stdout output, output filtering, run diffs, and wildcard detection.
 
+## v0.1.2
+
+- CT log ingestion command (`subdomain-scout ct`) via `crt.sh`.
+- Optional CT seeding for active scans (`scan --ct`).
+- Label dedupe metrics and retry metadata in scan output.
+
 ## Next
 
-- CT log ingestion.
 - Takeover signal checks.
+- Configurable takeover fingerprints + confidence scoring.

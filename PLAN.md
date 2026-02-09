@@ -34,8 +34,12 @@ See `PROJECT.md` for the canonical commands:
 - More flexible output filtering (`--status ...`) and retries for transient resolver failures.
 - Machine-readable scan/diff summaries to stderr (`--summary-json`).
 - Wordlist input from stdin via `--wordlist -` for pipeline-friendly scans.
+- CT ingestion command (`subdomain-scout ct`) backed by `crt.sh`.
+- Optional CT label seeding for active scans via `scan --ct`.
+- Scan observability upgrades: dedupe metrics in summary + per-record retry metadata (`attempts`, `retries`).
+- Strict hostname validation for domains/labels to fail fast on malformed input.
 
 ## Next
 
-- Add “retry on transient errors” reporting (e.g., record retry count) for easier troubleshooting.
-- Add per-record retry metadata for troubleshooting (retry count + last error).
+- Add takeover signal checks with a maintainable fingerprint catalog.
+- Add optional resolver controls (custom nameserver support) for reproducible CI scans.
