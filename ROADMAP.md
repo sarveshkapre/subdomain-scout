@@ -17,5 +17,5 @@
 
 ## Next
 
-- Improve wildcard DNS handling to reduce false positives (especially on CDN-backed domains where wildcard IPs overlap with real hosts).
 - Expand takeover fingerprint coverage with false-positive guardrails.
+- Add optional DNS record enrichment (CNAME) for better triage and debugging.

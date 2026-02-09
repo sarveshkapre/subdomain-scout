@@ -31,8 +31,10 @@ See `PROJECT.md` for the canonical commands:
 - `--only-resolved` filtering, wordlist comment/blank-line handling, and per-record `error` field on resolver failures.
 - `diff` command to compare two NDJSON runs for monitoring/CI.
 - Best-effort wildcard DNS detection (`--detect-wildcard`) to reduce noisy “resolved” results.
+- CDN-wildcard false-positive reduction via `--wildcard-threshold` and optional HTTP verification (`--wildcard-verify-http`).
 - More flexible output filtering (`--status ...`) and retries for transient resolver failures.
 - Machine-readable scan/diff summaries to stderr (`--summary-json`).
+- Periodic scan progress updates to stderr (`scan --progress`).
 - Wordlist input from stdin via `--wordlist -` for pipeline-friendly scans.
 - CT ingestion command (`subdomain-scout ct`) backed by `crt.sh`.
 - Optional CT label seeding for active scans via `scan --ct`.

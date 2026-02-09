@@ -4,6 +4,36 @@ Structured project memory for autonomous maintenance runs.
 
 ## Decisions
 
+### 2026-02-09 - Reduce wildcard false positives with thresholding and HTTP verification
+- Decision: Added `scan --detect-wildcard` refinements for CDN-backed domains via `--wildcard-threshold` and optional HTTP signature verification (`--wildcard-verify-http` / `--wildcard-http-timeout`).
+- Why: Wildcard zones on CDNs can overlap IPs with real hosts, creating noisy `status=wildcard` false positives; HTTP comparison against a random wildcard probe is a pragmatic, dependency-free discriminator.
+- Evidence:
+  - Code: `src/subdomain_scout/scanner.py`, `src/subdomain_scout/cli.py`
+  - Tests: `tests/test_wildcard.py` (`test_scan_wildcard_http_verification_can_flip_false_positive`)
+  - Docs: `README.md`, `PROJECT.md`, `CHANGELOG.md`
+  - Validation: `make check`
+  - CI: `https://github.com/sarveshkapre/subdomain-scout/actions/runs/21836755911`
+- Commit: `f8c6eff`
+- Confidence: high
+- Trust label: verified-local-and-ci
+- Follow-ups:
+  - Consider optional CNAME enrichment to further disambiguate wildcard/CDN behavior without relying on HTTP.
+
+### 2026-02-09 - Add scan progress and summary schema versioning
+- Decision: Added `scan --progress` / `--progress-every` for periodic stderr progress, and added `schema_version=1` to `scan/ct/diff --summary-json` payloads.
+- Why: Long-running scans benefit from operator feedback; explicit schema versioning makes downstream automation safer and future changes auditable.
+- Evidence:
+  - Code: `src/subdomain_scout/scanner.py`, `src/subdomain_scout/cli.py`
+  - Tests: `tests/test_cli_scan.py`, `tests/test_cli_ct.py`, `tests/test_cli_diff.py`
+  - Docs: `README.md`, `PROJECT.md`, `CHANGELOG.md`
+  - Validation: `make check`; CLI smoke commands (see Verification Evidence)
+  - CI: `https://github.com/sarveshkapre/subdomain-scout/actions/runs/21836850508`, `https://github.com/sarveshkapre/subdomain-scout/actions/runs/21836942795`
+- Commit: `5919514`, `82d5f45`
+- Confidence: high
+- Trust label: verified-local-and-ci
+- Follow-ups:
+  - Consider a machine-readable progress mode (JSON progress lines) if automation wants both progress and `--summary-json`.
+
 ### 2026-02-09 - Add takeover fingerprint checks to active scans
 - Decision: Added optional takeover probing in `scan` via `--takeover-check`, with versioned fingerprints, confidence scoring, and custom catalog loading.
 - Why: This was the highest-impact open roadmap gap for production relevance; it surfaces likely dangling-service risk signals in the same workflow users already run.
@@ -82,6 +112,11 @@ Structured project memory for autonomous maintenance runs.
 - Trust label: verified-local
 
 ## Verification Evidence
+
+- `make check` (pass; 42 tests)
+- `printf "www\n" | .venv/bin/python -m subdomain_scout scan --domain invalid.test --wordlist - --out - --progress --progress-every 0 --timeout 0.1 --concurrency 1` (pass; includes `progress attempted=1` and `scanned attempted=1`)
+- `printf "www\n" | .venv/bin/python -m subdomain_scout scan --domain invalid.test --wordlist - --out - --summary-json --timeout 0.1 --concurrency 1` (pass; `schema_version=1`)
+- `tmpdir=$(mktemp -d) && printf '{"subdomain":"a.example.com","status":"resolved","ips":[]}'"\\n" > "$tmpdir/old.jsonl" && printf '{"subdomain":"a.example.com","status":"resolved","ips":[]}'"\\n"'{"subdomain":"b.example.com","status":"resolved","ips":["1.1.1.1"]}'"\\n" > "$tmpdir/new.jsonl" && .venv/bin/python -m subdomain_scout diff --old "$tmpdir/old.jsonl" --new "$tmpdir/new.jsonl" --summary-only --summary-json && rm -rf "$tmpdir"` (pass; `schema_version=1`)
 
 - `make check` (pass; 35 tests)
 - `tmpdir=$(mktemp -d) && printf "www\n" > "$tmpdir/words.txt" && .venv/bin/python -m subdomain_scout scan --domain example.com --wordlist "$tmpdir/words.txt" --out - --only-resolved --resolver 1.1.1.1 --timeout 2 --concurrency 1 --summary-json > "$tmpdir/out.txt" 2> "$tmpdir/summary.json" && cat "$tmpdir/out.txt" && cat "$tmpdir/summary.json" && rm -rf "$tmpdir"` (pass; `attempted=1 resolved=1`)

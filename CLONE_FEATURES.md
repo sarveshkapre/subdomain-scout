@@ -7,16 +7,21 @@
 - Gaps found during codebase exploration
 
 ## Candidate Features To Do
-- [ ] (P2) Reduce wildcard false positives on CDN-backed domains (per-IP thresholding and/or content comparison against random wildcard probe). [impact:5 effort:4 fit:5 diff:3 risk:3 conf:3]
 - [ ] (P2) Expand built-in takeover fingerprints and add false-positive guard tests per provider. [impact:3 effort:3 fit:4 diff:3 risk:2 conf:3]
-- [ ] (P3) Add output schema versioning: include a `schema_version` in summaries and document stability expectations. [impact:3 effort:2 fit:4 diff:2 risk:2 conf:3]
-- [ ] (P3) Add a `scan --progress` option to print periodic progress/stats to stderr for long runs. [impact:3 effort:2 fit:3 diff:1 risk:1 conf:3]
 - [ ] (P3) Add optional DNS record enrichment for resolved hosts (CNAME collection behind a flag). [impact:2 effort:3 fit:3 diff:2 risk:2 conf:2]
 - [ ] (P3) Add a benchmark fixture for large wordlists to track scan throughput regressions. [impact:2 effort:3 fit:3 diff:1 risk:1 conf:3]
 - [ ] (P3) Add release automation for semantic version bump + changelog cut. [impact:2 effort:3 fit:3 diff:1 risk:2 conf:3]
 - [ ] (P3) Add `scan --hosts` mode to accept full hostnames (one per line) in addition to label+domain composition. [impact:2 effort:3 fit:3 diff:1 risk:2 conf:3]
 
 ## Implemented
+- [x] (2026-02-09) Reduce wildcard false positives on CDN-backed domains via `--wildcard-threshold` and optional HTTP verification (`--wildcard-verify-http`).
+  - Evidence: `src/subdomain_scout/scanner.py`, `src/subdomain_scout/cli.py`, `tests/test_wildcard.py`, `README.md`, `PROJECT.md`, `CHANGELOG.md`
+  - Commit: `f8c6eff`
+  - CI: `21836755911` (success)
+- [x] (2026-02-09) Add `scan --progress` and add `schema_version` to JSON summary payloads (`scan/ct/diff --summary-json`).
+  - Evidence: `src/subdomain_scout/scanner.py`, `src/subdomain_scout/cli.py`, `tests/test_cli_scan.py`, `tests/test_cli_ct.py`, `tests/test_cli_diff.py`, `README.md`, `PROJECT.md`, `CHANGELOG.md`
+  - Commit: `5919514`, `82d5f45`
+  - CI: `21836850508` (success), `21836942795` (success)
 - [x] (2026-02-09) Improved wildcard detection for multi-level labels by probing per-suffix wildcards (e.g. `*.dev.example.com`) and caching results.
   - Evidence: `src/subdomain_scout/scanner.py`, `tests/test_wildcard.py`, `CHANGELOG.md`
   - Commit: `0e4395e`
@@ -97,8 +102,9 @@ printf 'www\n' | .venv/bin/python -m subdomain_scout scan --domain example.com -
 - Retry count visibility (`attempts`/`retries`) is important for CI troubleshooting when resolvers are flaky but eventually succeed.
 - Market scan notes (untrusted):
   - Resolver lists and resume are baseline UX (e.g., ProjectDiscovery `dnsx` has `-r` resolver list input and `-resume`). Sources: https://docs.projectdiscovery.io/opensource/dnsx/usage and https://github.com/projectdiscovery/dnsx
-  - Wildcard handling often uses threshold-style heuristics (e.g., `dnsx` has `-wildcard-threshold`). Source: https://docs.projectdiscovery.io/opensource/dnsx/usage
+  - Wildcard handling often uses threshold-style heuristics (e.g., `dnsx` has `-wildcard-threshold`, default 5). Source: https://docs.projectdiscovery.io/opensource/dnsx/usage
   - Tools like `puredns` emphasize wildcard filtering as a core feature and use resolver list files by default. Source: https://github.com/d3mondev/puredns
+  - Tools like `shuffledns` describe "smart wildcard elimination" using a per-IP thresholding heuristic. Source: https://github.com/projectdiscovery/shuffledns
   - Amass exposes resolver configuration for controlling DNS behavior across runs. Source: https://github.com/OWASP/Amass/wiki/The-Configuration-File
 
 ## Notes
