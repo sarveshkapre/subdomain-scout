@@ -7,10 +7,16 @@
 - Gaps found during codebase exploration
 
 ## Candidate Features To Do
-- [ ] (P2) Improve wildcard DNS handling to reduce false “resolved” noise on multi-level wildcards (threshold-based or per-IP heuristics).
-- [ ] (P2) Expand built-in takeover fingerprints and add false-positive guard tests per provider.
-- [ ] (P3) Add benchmark fixture for large wordlists to track scan throughput regressions.
-- [ ] (P3) Add release automation for semantic version bump + changelog cut.
+- [ ] (P1) (Selected) Improve wildcard DNS handling for multi-level labels (detect wildcard at each suffix like `*.dev.example.com`), with caching and tests. [impact:5 effort:3 fit:5 diff:3 risk:2 conf:4]
+- [ ] (P2) (Selected) Add `scan --resolver-file` to load resolver IP[:port] entries from a file (skip blanks/comments; repeatable with `--resolver`). [impact:4 effort:2 fit:5 diff:2 risk:1 conf:4]
+- [ ] (P2) (Selected) Single-source CLI `--version` from package metadata (avoid drift vs `pyproject.toml`) and add a guard test. [impact:3 effort:1 fit:4 diff:1 risk:1 conf:5]
+- [ ] (P2) Expand built-in takeover fingerprints and add false-positive guard tests per provider. [impact:3 effort:3 fit:4 diff:3 risk:2 conf:3]
+- [ ] (P3) Add output schema versioning: include a `schema_version` in summaries and document stability expectations. [impact:3 effort:2 fit:4 diff:2 risk:2 conf:3]
+- [ ] (P3) Add a `scan --progress` option to print periodic progress/stats to stderr for long runs. [impact:3 effort:2 fit:3 diff:1 risk:1 conf:3]
+- [ ] (P3) Add optional DNS record enrichment for resolved hosts (CNAME collection behind a flag). [impact:2 effort:3 fit:3 diff:2 risk:2 conf:2]
+- [ ] (P3) Add a benchmark fixture for large wordlists to track scan throughput regressions. [impact:2 effort:3 fit:3 diff:1 risk:1 conf:3]
+- [ ] (P3) Add release automation for semantic version bump + changelog cut. [impact:2 effort:3 fit:3 diff:1 risk:2 conf:3]
+- [ ] (P3) Add `scan --hosts` mode to accept full hostnames (one per line) in addition to label+domain composition. [impact:2 effort:3 fit:3 diff:1 risk:2 conf:3]
 
 ## Implemented
 - [x] (2026-02-09) Added takeover checks to `scan` with a versioned default fingerprint catalog and confidence scoring.
