@@ -17,5 +17,5 @@
 
 ## Next
 
-- Optional custom DNS resolvers for reproducible CI scans.
-- Resume/append scan mode for long-running wordlists.
+- Improve wildcard DNS handling to reduce false positives (especially on multi-level wildcards).
+- Expand takeover fingerprint coverage with false-positive guardrails.

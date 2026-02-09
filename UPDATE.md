@@ -16,6 +16,8 @@
 - Improve scan observability with dedupe summary metrics and per-record retry metadata.
 - Add strict domain/label validation for safer CLI input handling.
 - Add optional takeover fingerprint checks during scans (`--takeover-check`) with confidence scoring and custom catalog support.
+- Add optional custom DNS resolver pinning (`scan --resolver`) for reproducible scans across environments.
+- Add resume/append scan mode (`scan --resume`) to skip already-seen labels when writing to an existing output file.
 
 ## How to try it
 
@@ -24,6 +26,8 @@ make setup
 make check
 subdomain-scout scan --domain example.com --wordlist words.txt --out subdomains.jsonl --concurrency 20
 subdomain-scout scan --domain example.com --wordlist words.txt --out - --only-resolved
+subdomain-scout scan --domain example.com --wordlist words.txt --out - --only-resolved --resolver 1.1.1.1
+subdomain-scout scan --domain example.com --wordlist words.txt --out subdomains.jsonl --resume
 subdomain-scout scan --domain example.com --wordlist words.txt --out - --takeover-check --summary-json
 subdomain-scout scan --domain example.com --wordlist words.txt --out - --ct --ct-limit 200 --summary-json
 subdomain-scout ct --domain example.com --out - --limit 50 --summary-json

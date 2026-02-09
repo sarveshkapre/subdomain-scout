@@ -39,8 +39,10 @@ See `PROJECT.md` for the canonical commands:
 - Scan observability upgrades: dedupe metrics in summary + per-record retry metadata (`attempts`, `retries`).
 - Strict hostname validation for domains/labels to fail fast on malformed input.
 - Optional takeover fingerprint checks during scans via `--takeover-check` with confidence scoring and custom catalog loading.
+- Optional custom DNS resolver pinning via `scan --resolver` for more reproducible scans across environments.
+- Resume/append scan mode via `scan --resume` to skip already-seen labels when writing to an existing output file.
 
 ## Next
 
-- Add optional resolver controls (custom nameserver support) for reproducible CI scans.
-- Add resume/append support for long-running scans.
+- Improve wildcard DNS handling to reduce false positives (especially on multi-level wildcards).
+- Expand takeover fingerprint coverage with false-positive guardrails.

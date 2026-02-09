@@ -14,6 +14,8 @@
 - Add `scan --ct` to merge CT-derived labels into active DNS scans.
 - Add scan dedupe metrics (`labels_total`, `labels_unique`, `labels_deduped`, `ct_labels`) in summaries.
 - Add per-record retry metadata in scan output (`attempts`, `retries`).
+- Add optional custom DNS resolver pinning via `scan --resolver`.
+- Add resume/append scan mode via `scan --resume` (skip already-seen labels when writing to an existing output file).
 - Add strict domain/label validation to fail fast on malformed hostnames.
 - Add optional takeover checks during scans (`--takeover-check`) using a versioned fingerprint catalog with confidence scoring and custom catalog override support.
 

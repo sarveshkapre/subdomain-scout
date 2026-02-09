@@ -7,12 +7,6 @@
 - Gaps found during codebase exploration
 
 ## Candidate Features To Do
-- [ ] (P1) Add optional custom DNS resolver support (`scan --resolver`) for reproducible CI scans across environments.
-  - Acceptance: `--resolver 1.1.1.1` (repeatable) uses a deterministic DNS client (A/AAAA), with local unit tests using an in-process UDP DNS stub (no network dependency).
-- [ ] (P1) Add scan resume/append support (`scan --resume`) for long-running wordlists.
-  - Acceptance: when `--out` is a file and already exists, skip already-seen labels (from prior output) and append only new results; expose a summary counter for skipped-existing labels.
-- [ ] (P1) Document CI-friendly scanning patterns and determinism caveats (system resolver vs pinned resolvers, resume tradeoffs).
-  - Acceptance: `README.md` + `PROJECT.md` examples updated; `CHANGELOG.md` reflects new flags.
 - [ ] (P2) Improve wildcard DNS handling to reduce false “resolved” noise on multi-level wildcards (threshold-based or per-IP heuristics).
 - [ ] (P2) Expand built-in takeover fingerprints and add false-positive guard tests per provider.
 - [ ] (P3) Add benchmark fixture for large wordlists to track scan throughput regressions.
@@ -58,6 +52,14 @@ printf 'www\n' | .venv/bin/python -m subdomain_scout scan --domain example.com -
 - [x] (2026-02-09) Documentation/tracker alignment commit pushed and CI-verified.
   - Commit: `c47e493`
   - GitHub Actions run: `21808109894` (success)
+- [x] (2026-02-09) Added optional custom DNS resolver pinning via `scan --resolver` using a minimal UDP/TCP DNS client (A/AAAA) for reproducible CI scans.
+  - Evidence: `src/subdomain_scout/dns_client.py`, `src/subdomain_scout/scanner.py`, `src/subdomain_scout/cli.py`, `tests/test_dns_client.py`
+  - Commit: `dcccb2d`
+- [x] (2026-02-09) Added resume/append scan mode via `scan --resume` (skip already-seen labels when writing to an existing output file) and exposed `labels_skipped_existing` in summaries.
+  - Evidence: `src/subdomain_scout/scanner.py`, `src/subdomain_scout/cli.py`, `tests/test_resume.py`, `tests/test_cli_scan.py`
+  - Commit: `a4396bf`
+- [x] (2026-02-09) Updated docs and trackers to reflect `--resolver` and `--resume` behavior.
+  - Evidence: `README.md`, `PROJECT.md`, `PLAN.md`, `ROADMAP.md`, `CHANGELOG.md`, `UPDATE.md`, `CLONE_FEATURES.md`, `PROJECT_MEMORY.md`
 
 ## Insights
 - The highest product leverage at this stage is combining passive CT discovery with active DNS validation in one workflow (`scan --ct`), which materially improves discovery yield with minimal user overhead.
