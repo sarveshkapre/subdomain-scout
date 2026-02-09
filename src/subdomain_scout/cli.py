@@ -14,6 +14,8 @@ from .takeover import build_takeover_checker
 from .validation import normalize_domain
 from .version import get_version
 
+_SCHEMA_VERSION = 1
+
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="subdomain-scout")
@@ -50,6 +52,17 @@ def main(argv: list[str] | None = None) -> int:
         "--summary-json",
         action="store_true",
         help="Print scan summary as JSON to stderr",
+    )
+    p_scan.add_argument(
+        "--progress",
+        action="store_true",
+        help="Print periodic progress updates to stderr (incompatible with --summary-json)",
+    )
+    p_scan.add_argument(
+        "--progress-every",
+        type=float,
+        default=2.0,
+        help="Progress update interval in seconds (0 = every record; used with --progress)",
     )
     p_scan.add_argument(
         "--ct",
@@ -191,6 +204,9 @@ def _run_scan(args: argparse.Namespace) -> int:
     if args.only_resolved and args.status:
         print("error: --only-resolved and --status cannot both be set", file=sys.stderr)
         return 2
+    if args.progress and args.summary_json:
+        print("error: --progress and --summary-json cannot both be set", file=sys.stderr)
+        return 2
     if args.wildcard_verify_http and not args.detect_wildcard:
         print("error: --wildcard-verify-http requires --detect-wildcard", file=sys.stderr)
         return 2
@@ -257,6 +273,8 @@ def _run_scan(args: argparse.Namespace) -> int:
 
     out_path = None if args.out == "-" else Path(args.out)
     try:
+        progress_stream = sys.stderr if args.progress else None
+        progress_every_s = float(args.progress_every)
         if args.wordlist == "-":
             summary = scan_domains_summary_lines(
                 domain=domain,
@@ -270,6 +288,8 @@ def _run_scan(args: argparse.Namespace) -> int:
                 wildcard_threshold=args.wildcard_threshold,
                 wildcard_verify_http=bool(args.wildcard_verify_http),
                 wildcard_http_timeout=float(args.wildcard_http_timeout),
+                progress_stream=progress_stream,
+                progress_every_s=progress_every_s,
                 only_resolved=bool(args.only_resolved),
                 retries=args.retries,
                 retry_backoff_ms=args.retry_backoff_ms,
@@ -292,6 +312,8 @@ def _run_scan(args: argparse.Namespace) -> int:
                 wildcard_threshold=args.wildcard_threshold,
                 wildcard_verify_http=bool(args.wildcard_verify_http),
                 wildcard_http_timeout=float(args.wildcard_http_timeout),
+                progress_stream=progress_stream,
+                progress_every_s=progress_every_s,
                 only_resolved=bool(args.only_resolved),
                 retries=args.retries,
                 retry_backoff_ms=args.retry_backoff_ms,
@@ -313,6 +335,7 @@ def _run_scan(args: argparse.Namespace) -> int:
             json.dumps(
                 {
                     "kind": "scan_summary",
+                    "schema_version": _SCHEMA_VERSION,
                     "attempted": summary.attempted,
                     "resolved": summary.resolved,
                     "wildcard": summary.wildcard,
@@ -394,6 +417,7 @@ def _run_ct(args: argparse.Namespace) -> int:
             json.dumps(
                 {
                     "kind": "ct_summary",
+                    "schema_version": _SCHEMA_VERSION,
                     "records_fetched": summary.records_fetched,
                     "names_seen": summary.names_seen,
                     "emitted": summary.emitted,
@@ -468,6 +492,7 @@ def _run_diff(args: argparse.Namespace) -> int:
             json.dumps(
                 {
                     "kind": "diff_summary",
+                    "schema_version": _SCHEMA_VERSION,
                     "old": summary.old_total,
                     "new": summary.new_total,
                     "added": summary.added,

@@ -263,6 +263,8 @@ def _scan_core(
     wildcard_threshold: int,
     wildcard_verify_http: bool,
     wildcard_http_timeout: float,
+    progress_stream: TextIO | None,
+    progress_every_s: float,
     retries: int,
     retry_backoff_ms: int,
     ct_labels: int,
@@ -283,6 +285,8 @@ def _scan_core(
         raise ValueError("wildcard_verify_http requires detect_wildcard")
     if wildcard_verify_http and wildcard_http_timeout <= 0:
         raise ValueError("wildcard_http_timeout must be > 0")
+    if progress_stream is not None and progress_every_s < 0:
+        raise ValueError("progress_every_s must be >= 0")
 
     start = time.time()
     attempted = 0
@@ -351,6 +355,8 @@ def _scan_core(
                 stack.enter_context(executor)
 
             out, _tmp_path = stack.enter_context(_output_stream(out_path, append=append_out))
+
+            last_progress = start
 
             seen_labels: set[str] = set()
 
@@ -460,6 +466,25 @@ def _scan_core(
                 else:
                     error += 1
 
+                if progress_stream is not None:
+                    now = time.time()
+                    if progress_every_s == 0 or (now - last_progress) >= progress_every_s:
+                        elapsed_s = max(0.001, now - start)
+                        rate = attempted / elapsed_s
+                        print(
+                            "progress"
+                            f" attempted={attempted}"
+                            f" resolved={resolved}"
+                            f" wildcard={wildcard}"
+                            f" not_found={not_found}"
+                            f" error={error}"
+                            f" wrote={written}"
+                            f" elapsed_ms={_ms(start)}"
+                            f" rate_s={rate:.2f}",
+                            file=progress_stream,
+                        )
+                        last_progress = now
+
                 if statuses is not None and res.status not in statuses:
                     continue
                 out.write(json.dumps(res.to_dict()) + "\n")
@@ -499,6 +524,8 @@ def scan_domains_summary(
     wildcard_threshold: int = 1,
     wildcard_verify_http: bool = False,
     wildcard_http_timeout: float = 3.0,
+    progress_stream: TextIO | None = None,
+    progress_every_s: float = 2.0,
     retries: int = 0,
     retry_backoff_ms: int = 50,
     extra_labels: Iterable[str] | None = None,
@@ -527,6 +554,8 @@ def scan_domains_summary(
         wildcard_threshold=wildcard_threshold,
         wildcard_verify_http=wildcard_verify_http,
         wildcard_http_timeout=wildcard_http_timeout,
+        progress_stream=progress_stream,
+        progress_every_s=progress_every_s,
         retries=retries,
         retry_backoff_ms=retry_backoff_ms,
         ct_labels=ct_labels_count,
@@ -551,6 +580,8 @@ def scan_domains_summary_lines(
     wildcard_threshold: int = 1,
     wildcard_verify_http: bool = False,
     wildcard_http_timeout: float = 3.0,
+    progress_stream: TextIO | None = None,
+    progress_every_s: float = 2.0,
     retries: int = 0,
     retry_backoff_ms: int = 50,
     extra_labels: Iterable[str] | None = None,
@@ -579,6 +610,8 @@ def scan_domains_summary_lines(
         wildcard_threshold=wildcard_threshold,
         wildcard_verify_http=wildcard_verify_http,
         wildcard_http_timeout=wildcard_http_timeout,
+        progress_stream=progress_stream,
+        progress_every_s=progress_every_s,
         retries=retries,
         retry_backoff_ms=retry_backoff_ms,
         ct_labels=ct_labels_count,

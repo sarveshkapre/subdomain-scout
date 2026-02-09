@@ -21,6 +21,8 @@
 - Add resume/append scan mode via `scan --resume` (skip already-seen labels when writing to an existing output file).
 - Add strict domain/label validation to fail fast on malformed hostnames.
 - Add optional takeover checks during scans (`--takeover-check`) using a versioned fingerprint catalog with confidence scoring and custom catalog override support.
+- Add `scan --progress` to print periodic progress updates to stderr.
+- Add `schema_version` to JSON summary payloads (`scan/ct/diff --summary-json`).
 
 ## v0.1.0 - 2026-01-31
 

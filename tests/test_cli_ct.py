@@ -30,6 +30,7 @@ def test_ct_command_writes_records_and_summary_json(
     assert all(row["source"] == "crt.sh" for row in rows)
     summary = json.loads(captured.err.strip())
     assert summary["kind"] == "ct_summary"
+    assert summary["schema_version"] == 1
     assert summary["emitted"] == 2
     assert summary["out"] == "stdout"
 

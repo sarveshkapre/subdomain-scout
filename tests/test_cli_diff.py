@@ -137,4 +137,5 @@ def test_diff_summary_json_is_parseable(tmp_path: Path) -> None:
     assert proc.stdout.strip() == ""
     payload = json.loads(proc.stderr.strip())
     assert payload["kind"] == "diff_summary"
+    assert payload["schema_version"] == 1
     assert payload["added"] == 1

@@ -25,6 +25,7 @@ subdomain-scout scan --domain example.com --wordlist ./words.txt --out - --detec
 subdomain-scout scan --domain example.com --wordlist ./words.txt --out - --detect-wildcard --wildcard-verify-http --wildcard-threshold 3 --only-resolved
 subdomain-scout scan --domain example.com --wordlist ./words.txt --out - --status resolved --status wildcard
 subdomain-scout scan --domain example.com --wordlist ./words.txt --out - --summary-json
+subdomain-scout scan --domain example.com --wordlist ./words.txt --out - --progress --progress-every 2
 subdomain-scout scan --domain example.com --wordlist ./words.txt --out subdomains.jsonl --resume
 subdomain-scout scan --domain example.com --wordlist ./words.txt --out - --takeover-check --summary-json
 subdomain-scout scan --domain example.com --wordlist ./words.txt --out - --takeover-check --takeover-fingerprints ./fingerprints.json --summary-json

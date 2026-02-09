@@ -67,6 +67,7 @@ def test_scan_summary_json_is_parseable(tmp_path: Path) -> None:
     assert proc.returncode == 0
     payload = json.loads(proc.stderr.strip())
     assert payload["kind"] == "scan_summary"
+    assert payload["schema_version"] == 1
     assert payload["attempted"] == 1
     assert payload["out"] == "stdout"
 
@@ -100,6 +101,39 @@ def test_scan_supports_wordlist_stdin(tmp_path: Path) -> None:
     assert proc.stdout.strip() == ""
     payload = json.loads(proc.stderr.strip())
     assert payload["attempted"] == 1
+
+
+def test_scan_progress_writes_to_stderr(tmp_path: Path) -> None:
+    wordlist = tmp_path / "words.txt"
+    wordlist.write_text("www\n", encoding="utf-8")
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "subdomain_scout",
+            "scan",
+            "--domain",
+            "invalid.test",
+            "--wordlist",
+            str(wordlist),
+            "--out",
+            "-",
+            "--progress",
+            "--progress-every",
+            "0",
+            "--timeout",
+            "0.1",
+            "--concurrency",
+            "1",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0
+    assert "progress attempted=1" in proc.stderr
+    assert "scanned attempted=1" in proc.stderr
 
 
 def test_scan_resume_requires_file_output(tmp_path: Path) -> None:
