@@ -467,6 +467,8 @@ def _scan_core(
                     error += 1
 
                 if progress_stream is not None:
+                    will_write = statuses is None or res.status in statuses
+                    wrote_now = written + (1 if will_write else 0)
                     now = time.time()
                     if progress_every_s == 0 or (now - last_progress) >= progress_every_s:
                         elapsed_s = max(0.001, now - start)
@@ -478,7 +480,7 @@ def _scan_core(
                             f" wildcard={wildcard}"
                             f" not_found={not_found}"
                             f" error={error}"
-                            f" wrote={written}"
+                            f" wrote={wrote_now}"
                             f" elapsed_ms={_ms(start)}"
                             f" rate_s={rate:.2f}",
                             file=progress_stream,
