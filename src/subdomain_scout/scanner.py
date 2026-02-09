@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import itertools
 import json
 import secrets
 import socket
@@ -11,6 +12,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Iterator, TextIO
 
+from .validation import normalize_label
+
 
 @dataclass(frozen=True)
 class Result:
@@ -18,6 +21,8 @@ class Result:
     ips: list[str]
     status: str
     elapsed_ms: int
+    attempts: int = 1
+    retries: int = 0
     error: str | None = None
     error_type: str | None = None
     error_code: int | None = None
@@ -28,6 +33,8 @@ class Result:
             "ips": self.ips,
             "status": self.status,
             "elapsed_ms": self.elapsed_ms,
+            "attempts": self.attempts,
+            "retries": self.retries,
         }
         if self.error is not None:
             payload["error"] = self.error
@@ -88,12 +95,43 @@ def _resolve_with_retries(name: str, *, retries: int, retry_backoff_ms: int) -> 
     attempt = 0
     while True:
         res = _resolve(name)
+        attempts = attempt + 1
         if res.status != "error":
-            return res
+            return Result(
+                subdomain=res.subdomain,
+                ips=res.ips,
+                status=res.status,
+                elapsed_ms=res.elapsed_ms,
+                attempts=attempts,
+                retries=attempt,
+                error=res.error,
+                error_type=res.error_type,
+                error_code=res.error_code,
+            )
         if not _is_retryable(res):
-            return res
+            return Result(
+                subdomain=res.subdomain,
+                ips=res.ips,
+                status=res.status,
+                elapsed_ms=res.elapsed_ms,
+                attempts=attempts,
+                retries=attempt,
+                error=res.error,
+                error_type=res.error_type,
+                error_code=res.error_code,
+            )
         if attempt >= retries:
-            return res
+            return Result(
+                subdomain=res.subdomain,
+                ips=res.ips,
+                status=res.status,
+                elapsed_ms=res.elapsed_ms,
+                attempts=attempts,
+                retries=attempt,
+                error=res.error,
+                error_type=res.error_type,
+                error_code=res.error_code,
+            )
         if retry_backoff_ms:
             time.sleep((retry_backoff_ms * (2**attempt)) / 1000.0)
         attempt += 1
@@ -111,6 +149,10 @@ class ScanSummary:
     wildcard: int
     not_found: int
     error: int
+    labels_total: int
+    labels_unique: int
+    labels_deduped: int
+    ct_labels: int
     elapsed_ms: int
 
 
@@ -122,7 +164,7 @@ def _iter_labels_lines(lines: Iterable[str]) -> Iterable[str]:
         label = line.split(maxsplit=1)[0].strip(".")
         if not label or label.startswith("#"):
             continue
-        yield label
+        yield normalize_label(label)
 
 
 def _iter_labels(wordlist: Path) -> Iterable[str]:
@@ -165,6 +207,7 @@ def _scan_core(
     wildcard_probes: int,
     retries: int,
     retry_backoff_ms: int,
+    ct_labels: int,
 ) -> ScanSummary:
     if concurrency < 1:
         raise ValueError("concurrency must be >= 1")
@@ -180,6 +223,9 @@ def _scan_core(
     wildcard = 0
     not_found = 0
     error = 0
+    labels_total = 0
+    labels_unique = 0
+    labels_deduped = 0
 
     allowed_statuses = {"resolved", "wildcard", "not_found", "error"}
     if statuses is not None:
@@ -206,7 +252,21 @@ def _scan_core(
                 stack.enter_context(executor)
 
             out, _tmp_path = stack.enter_context(_output_stream(out_path))
-            names = _iter_fqdns(domain, labels)
+
+            seen_labels: set[str] = set()
+
+            def iter_unique_labels() -> Iterator[str]:
+                nonlocal labels_total, labels_unique, labels_deduped
+                for label in labels:
+                    labels_total += 1
+                    if label in seen_labels:
+                        labels_deduped += 1
+                        continue
+                    seen_labels.add(label)
+                    labels_unique += 1
+                    yield label
+
+            names = _iter_fqdns(domain, iter_unique_labels())
 
             if executor is None:
                 results: Iterable[Result] = (run_one(name) for name in names)
@@ -221,6 +281,8 @@ def _scan_core(
                         ips=res.ips,
                         status="wildcard",
                         elapsed_ms=res.elapsed_ms,
+                        attempts=res.attempts,
+                        retries=res.retries,
                         error=res.error,
                         error_type=res.error_type,
                         error_code=res.error_code,
@@ -249,6 +311,10 @@ def _scan_core(
         wildcard=wildcard,
         not_found=not_found,
         error=error,
+        labels_total=labels_total,
+        labels_unique=labels_unique,
+        labels_deduped=labels_deduped,
+        ct_labels=ct_labels,
         elapsed_ms=_ms(start),
     )
 
@@ -266,12 +332,16 @@ def scan_domains_summary(
     wildcard_probes: int = 2,
     retries: int = 0,
     retry_backoff_ms: int = 50,
+    extra_labels: Iterable[str] | None = None,
+    ct_labels_count: int = 0,
 ) -> ScanSummary:
     if only_resolved and statuses is not None:
         raise ValueError("only_resolved and statuses cannot both be set")
     if only_resolved:
         statuses = {"resolved"}
     labels = _iter_labels(wordlist)
+    if extra_labels:
+        labels = itertools.chain(labels, extra_labels)
     return _scan_core(
         domain=domain,
         labels=labels,
@@ -283,6 +353,7 @@ def scan_domains_summary(
         wildcard_probes=wildcard_probes,
         retries=retries,
         retry_backoff_ms=retry_backoff_ms,
+        ct_labels=ct_labels_count,
     )
 
 
@@ -299,12 +370,16 @@ def scan_domains_summary_lines(
     wildcard_probes: int = 2,
     retries: int = 0,
     retry_backoff_ms: int = 50,
+    extra_labels: Iterable[str] | None = None,
+    ct_labels_count: int = 0,
 ) -> ScanSummary:
     if only_resolved and statuses is not None:
         raise ValueError("only_resolved and statuses cannot both be set")
     if only_resolved:
         statuses = {"resolved"}
     labels = _iter_labels_lines(wordlist_lines)
+    if extra_labels:
+        labels = itertools.chain(labels, extra_labels)
     return _scan_core(
         domain=domain,
         labels=labels,
@@ -316,6 +391,7 @@ def scan_domains_summary_lines(
         wildcard_probes=wildcard_probes,
         retries=retries,
         retry_backoff_ms=retry_backoff_ms,
+        ct_labels=ct_labels_count,
     )
 
 

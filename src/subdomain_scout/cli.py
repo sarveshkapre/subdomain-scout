@@ -6,8 +6,10 @@ import json
 import sys
 from pathlib import Path
 
+from .ct import fetch_ct_subdomains, subdomains_to_labels
 from .diff import compute_diff, load_jsonl
 from .scanner import scan_domains_summary, scan_domains_summary_lines
+from .validation import normalize_domain
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -29,6 +31,23 @@ def main(argv: list[str] | None = None) -> int:
         "--summary-json",
         action="store_true",
         help="Print scan summary as JSON to stderr",
+    )
+    p_scan.add_argument(
+        "--ct",
+        action="store_true",
+        help="Include labels discovered from certificate transparency logs (crt.sh)",
+    )
+    p_scan.add_argument(
+        "--ct-timeout",
+        type=float,
+        default=10.0,
+        help="Timeout for CT lookups in seconds (used with --ct)",
+    )
+    p_scan.add_argument(
+        "--ct-limit",
+        type=int,
+        default=0,
+        help="Max CT subdomains to ingest (0 = unlimited)",
     )
     p_scan.add_argument(
         "--status",
@@ -60,6 +79,22 @@ def main(argv: list[str] | None = None) -> int:
         help="Base backoff for retries (exponential)",
     )
     p_scan.set_defaults(func=_run_scan)
+
+    p_ct = sub.add_parser("ct", help="Fetch passive subdomains from certificate transparency logs")
+    p_ct.add_argument("--domain", required=True)
+    p_ct.add_argument(
+        "--out",
+        default="-",
+        help="Output path (use '-' for stdout)",
+    )
+    p_ct.add_argument("--timeout", type=float, default=10.0)
+    p_ct.add_argument("--limit", type=int, default=0, help="Max results to emit (0 = unlimited)")
+    p_ct.add_argument(
+        "--summary-json",
+        action="store_true",
+        help="Print CT fetch summary as JSON to stderr",
+    )
+    p_ct.set_defaults(func=_run_ct)
 
     p_diff = sub.add_parser("diff", help="Diff two JSONL/NDJSON scan outputs")
     p_diff.add_argument("--old", required=True, help="Old JSONL path (use '-' for stdin)")
@@ -96,13 +131,32 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _run_scan(args: argparse.Namespace) -> int:
-    domain = str(args.domain).strip().strip(".").lower()
-    if not domain:
-        print("error: --domain must be non-empty", file=sys.stderr)
+    try:
+        domain = normalize_domain(str(args.domain))
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
         return 2
     if args.only_resolved and args.status:
         print("error: --only-resolved and --status cannot both be set", file=sys.stderr)
         return 2
+
+    ct_labels: list[str] = []
+    if args.ct:
+        limit = None if args.ct_limit == 0 else int(args.ct_limit)
+        try:
+            ct_subdomains, _ct_summary = fetch_ct_subdomains(
+                domain,
+                timeout=float(args.ct_timeout),
+                limit=limit,
+            )
+        except ValueError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
+        except OSError as e:
+            print(f"error: CT lookup failed: {e}", file=sys.stderr)
+            return 1
+        ct_labels = subdomains_to_labels(ct_subdomains, domain=domain)
+
     out_path = None if args.out == "-" else Path(args.out)
     try:
         if args.wordlist == "-":
@@ -118,6 +172,8 @@ def _run_scan(args: argparse.Namespace) -> int:
                 only_resolved=bool(args.only_resolved),
                 retries=args.retries,
                 retry_backoff_ms=args.retry_backoff_ms,
+                extra_labels=ct_labels,
+                ct_labels_count=len(ct_labels),
             )
         else:
             summary = scan_domains_summary(
@@ -132,6 +188,8 @@ def _run_scan(args: argparse.Namespace) -> int:
                 only_resolved=bool(args.only_resolved),
                 retries=args.retries,
                 retry_backoff_ms=args.retry_backoff_ms,
+                extra_labels=ct_labels,
+                ct_labels_count=len(ct_labels),
             )
     except FileNotFoundError as e:
         print(f"error: file not found: {e.filename}", file=sys.stderr)
@@ -151,6 +209,10 @@ def _run_scan(args: argparse.Namespace) -> int:
                     "not_found": summary.not_found,
                     "error": summary.error,
                     "wrote": summary.written,
+                    "labels_total": summary.labels_total,
+                    "labels_unique": summary.labels_unique,
+                    "labels_deduped": summary.labels_deduped,
+                    "ct_labels": summary.ct_labels,
                     "elapsed_ms": summary.elapsed_ms,
                     "out": dest,
                 }
@@ -166,11 +228,76 @@ def _run_scan(args: argparse.Namespace) -> int:
             f" not_found={summary.not_found}"
             f" error={summary.error}"
             f" wrote={summary.written}"
+            f" labels_total={summary.labels_total}"
+            f" labels_unique={summary.labels_unique}"
+            f" labels_deduped={summary.labels_deduped}"
+            f" ct_labels={summary.ct_labels}"
             f" elapsed_ms={summary.elapsed_ms}"
             f" out={dest}",
             file=sys.stderr,
         )
     return 1 if summary.error else 0
+
+
+def _run_ct(args: argparse.Namespace) -> int:
+    try:
+        domain = normalize_domain(str(args.domain))
+        limit = None if args.limit == 0 else int(args.limit)
+        subdomains, summary = fetch_ct_subdomains(domain, timeout=float(args.timeout), limit=limit)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+    except OSError as e:
+        print(f"error: CT lookup failed: {e}", file=sys.stderr)
+        return 1
+
+    out = sys.stdout
+    if args.out != "-":
+        out_path = Path(args.out)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out = out_path.open("w", encoding="utf-8")
+    try:
+        for subdomain in subdomains:
+            out.write(
+                json.dumps(
+                    {
+                        "subdomain": subdomain,
+                        "source": "crt.sh",
+                        "status": "passive",
+                    }
+                )
+                + "\n"
+            )
+    finally:
+        if out is not sys.stdout:
+            out.close()
+
+    dest = "stdout" if args.out == "-" else str(args.out)
+    if args.summary_json:
+        sys.stderr.write(
+            json.dumps(
+                {
+                    "kind": "ct_summary",
+                    "records_fetched": summary.records_fetched,
+                    "names_seen": summary.names_seen,
+                    "emitted": summary.emitted,
+                    "elapsed_ms": summary.elapsed_ms,
+                    "out": dest,
+                }
+            )
+            + "\n"
+        )
+    else:
+        print(
+            "ct"
+            f" records_fetched={summary.records_fetched}"
+            f" names_seen={summary.names_seen}"
+            f" emitted={summary.emitted}"
+            f" elapsed_ms={summary.elapsed_ms}"
+            f" out={dest}",
+            file=sys.stderr,
+        )
+    return 0
 
 
 def _run_diff(args: argparse.Namespace) -> int:

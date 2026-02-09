@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "subdomain-scout"
 version = "0.1.1"
-description = "Subdomain discovery (CT/DNS/wordlists) + diffs + takeover signals + risk scoring"
+description = "Subdomain discovery via DNS wordlists + CT ingestion, with diff support"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }

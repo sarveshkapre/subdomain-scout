@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import socket
 from pathlib import Path
 
@@ -49,3 +50,36 @@ def test_scan_retries_transient_dns_errors(monkeypatch: pytest.MonkeyPatch, tmp_
     assert summary.resolved == 1
     assert summary.error == 0
     assert calls["a.retry.test"] == 2
+    lines = out.read_text(encoding="utf-8").splitlines()
+    row = json.loads(lines[0])
+    assert row["attempts"] == 2
+    assert row["retries"] == 1
+
+
+def test_scan_dedupes_labels_and_reports_counts(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    def fake_getaddrinfo(name: str, _port: object) -> list[tuple[object, ...]]:
+        if name.endswith(".dedupe.test"):
+            raise socket.gaierror(getattr(socket, "EAI_NONAME", 8), "not found")
+        return [(None, None, None, None, ("8.8.8.8", 0))]
+
+    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
+
+    from subdomain_scout.scanner import scan_domains_summary
+
+    wordlist = tmp_path / "words.txt"
+    wordlist.write_text("a\na\nb\n", encoding="utf-8")
+    out = tmp_path / "out.jsonl"
+    summary = scan_domains_summary(
+        domain="dedupe.test",
+        wordlist=wordlist,
+        out_path=out,
+        timeout=0.1,
+        concurrency=1,
+    )
+
+    assert summary.attempted == 2
+    assert summary.labels_total == 3
+    assert summary.labels_unique == 2
+    assert summary.labels_deduped == 1
