@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from .ct import fetch_ct_subdomains, subdomains_to_labels
+from .dns_client import parse_nameserver
 from .diff import compute_diff, load_jsonl
 from .scanner import scan_domains_summary, scan_domains_summary_lines
 from .takeover import build_takeover_checker
@@ -27,6 +28,12 @@ def main(argv: list[str] | None = None) -> int:
         help="Output path (use '-' for stdout)",
     )
     p_scan.add_argument("--timeout", type=float, default=3.0)
+    p_scan.add_argument(
+        "--resolver",
+        action="append",
+        default=None,
+        help="Custom DNS resolver IP[:port] (repeatable; supports [IPv6]:port). When set, bypasses the system resolver.",
+    )
     p_scan.add_argument("--concurrency", type=int, default=20)
     p_scan.add_argument(
         "--summary-json",
@@ -191,6 +198,14 @@ def _run_scan(args: argparse.Namespace) -> int:
             print(f"error: {e}", file=sys.stderr)
             return 2
 
+    nameservers = None
+    if args.resolver:
+        try:
+            nameservers = [parse_nameserver(s) for s in args.resolver]
+        except ValueError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
+
     out_path = None if args.out == "-" else Path(args.out)
     try:
         if args.wordlist == "-":
@@ -209,6 +224,7 @@ def _run_scan(args: argparse.Namespace) -> int:
                 extra_labels=ct_labels,
                 ct_labels_count=len(ct_labels),
                 takeover_checker=takeover_checker,
+                nameservers=nameservers,
             )
         else:
             summary = scan_domains_summary(
@@ -226,6 +242,7 @@ def _run_scan(args: argparse.Namespace) -> int:
                 extra_labels=ct_labels,
                 ct_labels_count=len(ct_labels),
                 takeover_checker=takeover_checker,
+                nameservers=nameservers,
             )
     except FileNotFoundError as e:
         print(f"error: file not found: {e.filename}", file=sys.stderr)

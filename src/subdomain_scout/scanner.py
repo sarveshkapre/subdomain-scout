@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator, TextIO
 
+from .dns_client import DnsQueryError, resolve_ips
 from .validation import normalize_label
 
 
@@ -48,12 +49,17 @@ class Result:
         return payload
 
 
-def _resolve(name: str) -> Result:
+def _resolve(name: str, *, timeout: float, nameservers: list[tuple[str, int]] | None) -> Result:
     start = time.time()
     try:
-        infos = socket.getaddrinfo(name, None)
-        ips = [info[4][0] for info in infos]
-        ips = list(dict.fromkeys(ips))
+        if nameservers is None:
+            infos = socket.getaddrinfo(name, None)
+            ips = [info[4][0] for info in infos]
+            ips = list(dict.fromkeys(ips))
+        else:
+            ips = resolve_ips(name, nameservers=nameservers, timeout=timeout)
+            if not ips:
+                return Result(subdomain=name, ips=[], status="not_found", elapsed_ms=_ms(start))
         return Result(subdomain=name, ips=ips, status="resolved", elapsed_ms=_ms(start))
     except socket.gaierror as e:
         not_found_errnos = {
@@ -72,6 +78,28 @@ def _resolve(name: str) -> Result:
             error_type="gaierror",
             error_code=e.errno,
         )
+    except TimeoutError as e:
+        return Result(
+            subdomain=name,
+            ips=[],
+            status="error",
+            elapsed_ms=_ms(start),
+            error=str(e),
+            error_type="timeout",
+            error_code=None,
+        )
+    except DnsQueryError as e:
+        if e.rcode == 3:
+            return Result(subdomain=name, ips=[], status="not_found", elapsed_ms=_ms(start))
+        return Result(
+            subdomain=name,
+            ips=[],
+            status="error",
+            elapsed_ms=_ms(start),
+            error=str(e),
+            error_type="dns",
+            error_code=e.rcode,
+        )
     except OSError as e:
         return Result(
             subdomain=name,
@@ -86,10 +114,23 @@ def _resolve(name: str) -> Result:
 
 def _is_retryable(res: Result) -> bool:
     eai_again = getattr(socket, "EAI_AGAIN", None)
-    return res.status == "error" and res.error_type == "gaierror" and res.error_code == eai_again
+    if res.status != "error":
+        return False
+    if res.error_type == "gaierror" and res.error_code == eai_again:
+        return True
+    if res.error_type == "timeout":
+        return True
+    return False
 
 
-def _resolve_with_retries(name: str, *, retries: int, retry_backoff_ms: int) -> Result:
+def _resolve_with_retries(
+    name: str,
+    *,
+    timeout: float,
+    nameservers: list[tuple[str, int]] | None,
+    retries: int,
+    retry_backoff_ms: int,
+) -> Result:
     if retries < 0:
         raise ValueError("retries must be >= 0")
     if retry_backoff_ms < 0:
@@ -97,7 +138,7 @@ def _resolve_with_retries(name: str, *, retries: int, retry_backoff_ms: int) -> 
 
     attempt = 0
     while True:
-        res = _resolve(name)
+        res = _resolve(name, timeout=timeout, nameservers=nameservers)
         attempts = attempt + 1
         if res.status != "error":
             return Result(
@@ -214,6 +255,7 @@ def _scan_core(
     retry_backoff_ms: int,
     ct_labels: int,
     takeover_checker: Callable[[str], dict[str, Any] | None] | None,
+    nameservers: list[tuple[str, int]] | None,
 ) -> ScanSummary:
     if concurrency < 1:
         raise ValueError("concurrency must be >= 1")
@@ -246,14 +288,22 @@ def _scan_core(
     try:
         wildcard_ips: set[str] | None = None
         if detect_wildcard:
-            wildcard_ips = detect_wildcard_ips(domain, probes=wildcard_probes)
+            wildcard_ips = detect_wildcard_ips(
+                domain, probes=wildcard_probes, timeout=timeout, nameservers=nameservers
+            )
 
         executor: ThreadPoolExecutor | None = None
         if concurrency > 1:
             executor = ThreadPoolExecutor(max_workers=concurrency)
 
         def run_one(name: str) -> Result:
-            return _resolve_with_retries(name, retries=retries, retry_backoff_ms=retry_backoff_ms)
+            return _resolve_with_retries(
+                name,
+                timeout=timeout,
+                nameservers=nameservers,
+                retries=retries,
+                retry_backoff_ms=retry_backoff_ms,
+            )
 
         with contextlib.ExitStack() as stack:
             if executor is not None:
@@ -367,6 +417,7 @@ def scan_domains_summary(
     extra_labels: Iterable[str] | None = None,
     ct_labels_count: int = 0,
     takeover_checker: Callable[[str], dict[str, Any] | None] | None = None,
+    nameservers: list[tuple[str, int]] | None = None,
 ) -> ScanSummary:
     if only_resolved and statuses is not None:
         raise ValueError("only_resolved and statuses cannot both be set")
@@ -388,6 +439,7 @@ def scan_domains_summary(
         retry_backoff_ms=retry_backoff_ms,
         ct_labels=ct_labels_count,
         takeover_checker=takeover_checker,
+        nameservers=nameservers,
     )
 
 
@@ -407,6 +459,7 @@ def scan_domains_summary_lines(
     extra_labels: Iterable[str] | None = None,
     ct_labels_count: int = 0,
     takeover_checker: Callable[[str], dict[str, Any] | None] | None = None,
+    nameservers: list[tuple[str, int]] | None = None,
 ) -> ScanSummary:
     if only_resolved and statuses is not None:
         raise ValueError("only_resolved and statuses cannot both be set")
@@ -428,14 +481,21 @@ def scan_domains_summary_lines(
         retry_backoff_ms=retry_backoff_ms,
         ct_labels=ct_labels_count,
         takeover_checker=takeover_checker,
+        nameservers=nameservers,
     )
 
 
-def detect_wildcard_ips(domain: str, *, probes: int = 2) -> set[str] | None:
+def detect_wildcard_ips(
+    domain: str,
+    *,
+    probes: int = 2,
+    timeout: float = 3.0,
+    nameservers: list[tuple[str, int]] | None = None,
+) -> set[str] | None:
     hits: dict[frozenset[str], int] = {}
     for _ in range(probes):
         label = f"_sdscout-{secrets.token_hex(8)}"
-        res = _resolve(f"{label}.{domain}")
+        res = _resolve(f"{label}.{domain}", timeout=timeout, nameservers=nameservers)
         if res.status != "resolved" or not res.ips:
             continue
         ipset = frozenset(res.ips)
