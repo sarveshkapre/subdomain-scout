@@ -10,7 +10,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Iterator, TextIO
+from typing import Any, Callable, Iterable, Iterator, TextIO
 
 from .validation import normalize_label
 
@@ -26,6 +26,7 @@ class Result:
     error: str | None = None
     error_type: str | None = None
     error_code: int | None = None
+    takeover: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
@@ -42,6 +43,8 @@ class Result:
             payload["error_type"] = self.error_type
         if self.error_code is not None:
             payload["error_code"] = self.error_code
+        if self.takeover is not None:
+            payload["takeover"] = self.takeover
         return payload
 
 
@@ -153,6 +156,8 @@ class ScanSummary:
     labels_unique: int
     labels_deduped: int
     ct_labels: int
+    takeover_checked: int
+    takeover_suspected: int
     elapsed_ms: int
 
 
@@ -208,6 +213,7 @@ def _scan_core(
     retries: int,
     retry_backoff_ms: int,
     ct_labels: int,
+    takeover_checker: Callable[[str], dict[str, Any] | None] | None,
 ) -> ScanSummary:
     if concurrency < 1:
         raise ValueError("concurrency must be >= 1")
@@ -226,6 +232,8 @@ def _scan_core(
     labels_total = 0
     labels_unique = 0
     labels_deduped = 0
+    takeover_checked = 0
+    takeover_suspected = 0
 
     allowed_statuses = {"resolved", "wildcard", "not_found", "error"}
     if statuses is not None:
@@ -286,7 +294,29 @@ def _scan_core(
                         error=res.error,
                         error_type=res.error_type,
                         error_code=res.error_code,
+                        takeover=res.takeover,
                     )
+
+                if takeover_checker is not None and res.status in {"resolved", "wildcard"}:
+                    takeover_checked += 1
+                    try:
+                        takeover = takeover_checker(res.subdomain)
+                    except OSError:
+                        takeover = None
+                    if takeover is not None:
+                        takeover_suspected += 1
+                        res = Result(
+                            subdomain=res.subdomain,
+                            ips=res.ips,
+                            status=res.status,
+                            elapsed_ms=res.elapsed_ms,
+                            attempts=res.attempts,
+                            retries=res.retries,
+                            error=res.error,
+                            error_type=res.error_type,
+                            error_code=res.error_code,
+                            takeover=takeover,
+                        )
 
                 if res.status == "resolved":
                     resolved += 1
@@ -315,6 +345,8 @@ def _scan_core(
         labels_unique=labels_unique,
         labels_deduped=labels_deduped,
         ct_labels=ct_labels,
+        takeover_checked=takeover_checked,
+        takeover_suspected=takeover_suspected,
         elapsed_ms=_ms(start),
     )
 
@@ -334,6 +366,7 @@ def scan_domains_summary(
     retry_backoff_ms: int = 50,
     extra_labels: Iterable[str] | None = None,
     ct_labels_count: int = 0,
+    takeover_checker: Callable[[str], dict[str, Any] | None] | None = None,
 ) -> ScanSummary:
     if only_resolved and statuses is not None:
         raise ValueError("only_resolved and statuses cannot both be set")
@@ -354,6 +387,7 @@ def scan_domains_summary(
         retries=retries,
         retry_backoff_ms=retry_backoff_ms,
         ct_labels=ct_labels_count,
+        takeover_checker=takeover_checker,
     )
 
 
@@ -372,6 +406,7 @@ def scan_domains_summary_lines(
     retry_backoff_ms: int = 50,
     extra_labels: Iterable[str] | None = None,
     ct_labels_count: int = 0,
+    takeover_checker: Callable[[str], dict[str, Any] | None] | None = None,
 ) -> ScanSummary:
     if only_resolved and statuses is not None:
         raise ValueError("only_resolved and statuses cannot both be set")
@@ -392,6 +427,7 @@ def scan_domains_summary_lines(
         retries=retries,
         retry_backoff_ms=retry_backoff_ms,
         ct_labels=ct_labels_count,
+        takeover_checker=takeover_checker,
     )
 
 

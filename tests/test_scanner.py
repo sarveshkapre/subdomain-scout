@@ -83,3 +83,48 @@ def test_scan_dedupes_labels_and_reports_counts(
     assert summary.labels_total == 3
     assert summary.labels_unique == 2
     assert summary.labels_deduped == 1
+
+
+def test_scan_takeover_checker_updates_summary_and_output(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    def fake_getaddrinfo(name: str, _port: object) -> list[tuple[object, ...]]:
+        if name == "a.takeover.test":
+            return [(None, None, None, None, ("1.1.1.1", 0))]
+        raise socket.gaierror(getattr(socket, "EAI_NONAME", 8), "not found")
+
+    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
+
+    from subdomain_scout.scanner import scan_domains_summary
+
+    wordlist = tmp_path / "words.txt"
+    wordlist.write_text("a\nb\n", encoding="utf-8")
+    out = tmp_path / "out.jsonl"
+
+    summary = scan_domains_summary(
+        domain="takeover.test",
+        wordlist=wordlist,
+        out_path=out,
+        timeout=0.1,
+        concurrency=1,
+        takeover_checker=lambda host: (
+            {
+                "service": "Heroku",
+                "confidence": "high",
+                "score": 90,
+                "fingerprint_version": "test-v1",
+                "matched_pattern": "no such app",
+                "status_code": 404,
+                "url": f"https://{host}/",
+            }
+            if host == "a.takeover.test"
+            else None
+        ),
+    )
+
+    assert summary.takeover_checked == 1
+    assert summary.takeover_suspected == 1
+    lines = out.read_text(encoding="utf-8").splitlines()
+    first = json.loads(lines[0])
+    assert first["subdomain"] == "a.takeover.test"
+    assert first["takeover"]["service"] == "Heroku"

@@ -9,6 +9,7 @@ from pathlib import Path
 from .ct import fetch_ct_subdomains, subdomains_to_labels
 from .diff import compute_diff, load_jsonl
 from .scanner import scan_domains_summary, scan_domains_summary_lines
+from .takeover import build_takeover_checker
 from .validation import normalize_domain
 
 
@@ -78,6 +79,22 @@ def main(argv: list[str] | None = None) -> int:
         default=50,
         help="Base backoff for retries (exponential)",
     )
+    p_scan.add_argument(
+        "--takeover-check",
+        action="store_true",
+        help="Probe resolved hosts for known subdomain takeover fingerprints",
+    )
+    p_scan.add_argument(
+        "--takeover-timeout",
+        type=float,
+        default=3.0,
+        help="Timeout for takeover HTTP probes in seconds (used with --takeover-check)",
+    )
+    p_scan.add_argument(
+        "--takeover-fingerprints",
+        default=None,
+        help="Path to custom takeover fingerprint catalog JSON (used with --takeover-check)",
+    )
     p_scan.set_defaults(func=_run_scan)
 
     p_ct = sub.add_parser("ct", help="Fetch passive subdomains from certificate transparency logs")
@@ -141,6 +158,7 @@ def _run_scan(args: argparse.Namespace) -> int:
         return 2
 
     ct_labels: list[str] = []
+    takeover_checker = None
     if args.ct:
         limit = None if args.ct_limit == 0 else int(args.ct_limit)
         try:
@@ -156,6 +174,22 @@ def _run_scan(args: argparse.Namespace) -> int:
             print(f"error: CT lookup failed: {e}", file=sys.stderr)
             return 1
         ct_labels = subdomains_to_labels(ct_subdomains, domain=domain)
+
+    if args.takeover_check:
+        fingerprints_path = (
+            None if args.takeover_fingerprints is None else Path(str(args.takeover_fingerprints))
+        )
+        try:
+            takeover_checker = build_takeover_checker(
+                timeout=float(args.takeover_timeout),
+                fingerprints_path=fingerprints_path,
+            )
+        except FileNotFoundError as e:
+            print(f"error: file not found: {e.filename}", file=sys.stderr)
+            return 2
+        except ValueError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
 
     out_path = None if args.out == "-" else Path(args.out)
     try:
@@ -174,6 +208,7 @@ def _run_scan(args: argparse.Namespace) -> int:
                 retry_backoff_ms=args.retry_backoff_ms,
                 extra_labels=ct_labels,
                 ct_labels_count=len(ct_labels),
+                takeover_checker=takeover_checker,
             )
         else:
             summary = scan_domains_summary(
@@ -190,6 +225,7 @@ def _run_scan(args: argparse.Namespace) -> int:
                 retry_backoff_ms=args.retry_backoff_ms,
                 extra_labels=ct_labels,
                 ct_labels_count=len(ct_labels),
+                takeover_checker=takeover_checker,
             )
     except FileNotFoundError as e:
         print(f"error: file not found: {e.filename}", file=sys.stderr)
@@ -213,6 +249,8 @@ def _run_scan(args: argparse.Namespace) -> int:
                     "labels_unique": summary.labels_unique,
                     "labels_deduped": summary.labels_deduped,
                     "ct_labels": summary.ct_labels,
+                    "takeover_checked": summary.takeover_checked,
+                    "takeover_suspected": summary.takeover_suspected,
                     "elapsed_ms": summary.elapsed_ms,
                     "out": dest,
                 }
@@ -232,6 +270,8 @@ def _run_scan(args: argparse.Namespace) -> int:
             f" labels_unique={summary.labels_unique}"
             f" labels_deduped={summary.labels_deduped}"
             f" ct_labels={summary.ct_labels}"
+            f" takeover_checked={summary.takeover_checked}"
+            f" takeover_suspected={summary.takeover_suspected}"
             f" elapsed_ms={summary.elapsed_ms}"
             f" out={dest}",
             file=sys.stderr,
