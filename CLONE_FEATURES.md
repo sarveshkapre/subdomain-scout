@@ -7,11 +7,16 @@
 - Gaps found during codebase exploration
 
 ## Candidate Features To Do
-- [ ] (P1) Add optional custom DNS resolver support (`--resolver`) for reproducible CI scans across environments.
-- [ ] (P1) Add scan resume support (skip already-seen subdomains when appending outputs).
-- [ ] (P1) Expand built-in takeover fingerprints and add false-positive guard tests per provider.
-- [ ] (P2) Add benchmark fixture for large wordlists to track scan throughput regressions.
-- [ ] (P2) Add release automation for semantic version bump + changelog cut.
+- [ ] (P1) Add optional custom DNS resolver support (`scan --resolver`) for reproducible CI scans across environments.
+  - Acceptance: `--resolver 1.1.1.1` (repeatable) uses a deterministic DNS client (A/AAAA), with local unit tests using an in-process UDP DNS stub (no network dependency).
+- [ ] (P1) Add scan resume/append support (`scan --resume`) for long-running wordlists.
+  - Acceptance: when `--out` is a file and already exists, skip already-seen labels (from prior output) and append only new results; expose a summary counter for skipped-existing labels.
+- [ ] (P1) Document CI-friendly scanning patterns and determinism caveats (system resolver vs pinned resolvers, resume tradeoffs).
+  - Acceptance: `README.md` + `PROJECT.md` examples updated; `CHANGELOG.md` reflects new flags.
+- [ ] (P2) Improve wildcard DNS handling to reduce false “resolved” noise on multi-level wildcards (threshold-based or per-IP heuristics).
+- [ ] (P2) Expand built-in takeover fingerprints and add false-positive guard tests per provider.
+- [ ] (P3) Add benchmark fixture for large wordlists to track scan throughput regressions.
+- [ ] (P3) Add release automation for semantic version bump + changelog cut.
 
 ## Implemented
 - [x] (2026-02-09) Added takeover checks to `scan` with a versioned default fingerprint catalog and confidence scoring.
@@ -60,6 +65,9 @@ printf 'www\n' | .venv/bin/python -m subdomain_scout scan --domain example.com -
 - Versioned fingerprint catalogs make detection behavior auditable and allow controlled custom overrides without code changes.
 - Label deduplication is a low-risk performance win that reduces DNS calls and improves runtime determinism for repeated/merged sources.
 - Retry count visibility (`attempts`/`retries`) is important for CI troubleshooting when resolvers are flaky but eventually succeed.
+- Market scan notes (untrusted):
+  - Many subdomain/DNS tools treat custom resolver lists and resume as baseline UX for stable automation (e.g., ProjectDiscovery `dnsx` has `-r` resolver list and `-resume`). Sources: https://docs.projectdiscovery.io/opensource/dnsx/usage and https://github.com/projectdiscovery/dnsx
+  - Amass exposes resolver configuration for controlling DNS behavior across runs. Source: https://github.com/OWASP/Amass/wiki/The-Configuration-File
 
 ## Notes
 - This file is maintained by the autonomous clone loop.
