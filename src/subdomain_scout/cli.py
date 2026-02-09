@@ -86,6 +86,23 @@ def main(argv: list[str] | None = None) -> int:
         help="Number of random probes used for wildcard detection (>= 2)",
     )
     p_scan.add_argument(
+        "--wildcard-threshold",
+        type=int,
+        default=1,
+        help="Only start classifying records as wildcard after this many wildcard IP-set matches (>= 1).",
+    )
+    p_scan.add_argument(
+        "--wildcard-verify-http",
+        action="store_true",
+        help="Reduce wildcard false positives on CDNs by comparing HTTP responses against a random wildcard probe (requires --detect-wildcard).",
+    )
+    p_scan.add_argument(
+        "--wildcard-http-timeout",
+        type=float,
+        default=3.0,
+        help="Timeout for wildcard HTTP verification probes in seconds (used with --wildcard-verify-http).",
+    )
+    p_scan.add_argument(
         "--only-resolved",
         action="store_true",
         help="Only write records with status=resolved",
@@ -174,6 +191,15 @@ def _run_scan(args: argparse.Namespace) -> int:
     if args.only_resolved and args.status:
         print("error: --only-resolved and --status cannot both be set", file=sys.stderr)
         return 2
+    if args.wildcard_verify_http and not args.detect_wildcard:
+        print("error: --wildcard-verify-http requires --detect-wildcard", file=sys.stderr)
+        return 2
+    if int(args.wildcard_threshold) < 1:
+        print("error: --wildcard-threshold must be >= 1", file=sys.stderr)
+        return 2
+    if args.wildcard_verify_http and float(args.wildcard_http_timeout) <= 0:
+        print("error: --wildcard-http-timeout must be > 0", file=sys.stderr)
+        return 2
 
     ct_labels: list[str] = []
     takeover_checker = None
@@ -241,6 +267,9 @@ def _run_scan(args: argparse.Namespace) -> int:
                 statuses=set(args.status) if args.status else None,
                 detect_wildcard=bool(args.detect_wildcard),
                 wildcard_probes=args.wildcard_probes,
+                wildcard_threshold=args.wildcard_threshold,
+                wildcard_verify_http=bool(args.wildcard_verify_http),
+                wildcard_http_timeout=float(args.wildcard_http_timeout),
                 only_resolved=bool(args.only_resolved),
                 retries=args.retries,
                 retry_backoff_ms=args.retry_backoff_ms,
@@ -260,6 +289,9 @@ def _run_scan(args: argparse.Namespace) -> int:
                 statuses=set(args.status) if args.status else None,
                 detect_wildcard=bool(args.detect_wildcard),
                 wildcard_probes=args.wildcard_probes,
+                wildcard_threshold=args.wildcard_threshold,
+                wildcard_verify_http=bool(args.wildcard_verify_http),
+                wildcard_http_timeout=float(args.wildcard_http_timeout),
                 only_resolved=bool(args.only_resolved),
                 retries=args.retries,
                 retry_backoff_ms=args.retry_backoff_ms,

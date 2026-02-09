@@ -3,10 +3,14 @@ from __future__ import annotations
 import contextlib
 import itertools
 import json
+import hashlib
+import re
 import secrets
 import socket
 import sys
 import time
+import urllib.error
+import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
@@ -256,6 +260,9 @@ def _scan_core(
     statuses: set[str] | None,
     detect_wildcard: bool,
     wildcard_probes: int,
+    wildcard_threshold: int,
+    wildcard_verify_http: bool,
+    wildcard_http_timeout: float,
     retries: int,
     retry_backoff_ms: int,
     ct_labels: int,
@@ -270,6 +277,12 @@ def _scan_core(
         raise ValueError("timeout must be > 0")
     if detect_wildcard and wildcard_probes < 2:
         raise ValueError("wildcard_probes must be >= 2 when detect_wildcard is enabled")
+    if wildcard_threshold < 1:
+        raise ValueError("wildcard_threshold must be >= 1")
+    if wildcard_verify_http and not detect_wildcard:
+        raise ValueError("wildcard_verify_http requires detect_wildcard")
+    if wildcard_verify_http and wildcard_http_timeout <= 0:
+        raise ValueError("wildcard_http_timeout must be > 0")
 
     start = time.time()
     attempted = 0
@@ -295,6 +308,8 @@ def _scan_core(
     socket.setdefaulttimeout(timeout)
     try:
         wildcard_cache: dict[str, set[frozenset[str]]] = {}
+        wildcard_ipset_hit_counts: dict[tuple[str, frozenset[str]], int] = {}
+        wildcard_http_cache: dict[str, dict[str, tuple[int, str]]] = {}
 
         def wildcard_ipsets_for_zone(zone: str) -> set[frozenset[str]]:
             cached = wildcard_cache.get(zone)
@@ -306,6 +321,17 @@ def _scan_core(
             ipsets = {ipset for ipset, count in hits.items() if count >= 2}
             wildcard_cache[zone] = ipsets
             return ipsets
+
+        def wildcard_http_sigs_for_zone(zone: str) -> dict[str, tuple[int, str]]:
+            cached = wildcard_http_cache.get(zone)
+            if cached is not None:
+                return cached
+            # Use a random label; this should hit the wildcard behavior if present.
+            label = f"_sdscout-{secrets.token_hex(8)}"
+            host = f"{label}.{zone}"
+            sigs = _http_signatures_for_host(host, timeout=wildcard_http_timeout)
+            wildcard_http_cache[zone] = sigs
+            return sigs
 
         executor: ThreadPoolExecutor | None = None
         if concurrency > 1:
@@ -358,19 +384,51 @@ def _scan_core(
                     if len(parts) == 2:
                         zone = parts[1]
                         ipsets = wildcard_ipsets_for_zone(zone)
-                        if ipsets and frozenset(res.ips) in ipsets:
-                            res = Result(
-                                subdomain=res.subdomain,
-                                ips=res.ips,
-                                status="wildcard",
-                                elapsed_ms=res.elapsed_ms,
-                                attempts=res.attempts,
-                                retries=res.retries,
-                                error=res.error,
-                                error_type=res.error_type,
-                                error_code=res.error_code,
-                                takeover=res.takeover,
-                            )
+                        if ipsets:
+                            ipset = frozenset(res.ips)
+                            if ipset in ipsets:
+                                key = (zone, ipset)
+                                wildcard_ipset_hit_counts[key] = (
+                                    wildcard_ipset_hit_counts.get(key, 0) + 1
+                                )
+                                if wildcard_ipset_hit_counts[key] >= wildcard_threshold:
+                                    candidate = Result(
+                                        subdomain=res.subdomain,
+                                        ips=res.ips,
+                                        status="wildcard",
+                                        elapsed_ms=res.elapsed_ms,
+                                        attempts=res.attempts,
+                                        retries=res.retries,
+                                        error=res.error,
+                                        error_type=res.error_type,
+                                        error_code=res.error_code,
+                                        takeover=res.takeover,
+                                    )
+
+                                    if wildcard_verify_http:
+                                        baseline = wildcard_http_sigs_for_zone(zone)
+                                        candidate_sigs = _http_signatures_for_host(
+                                            res.subdomain,
+                                            timeout=wildcard_http_timeout,
+                                        )
+                                        if baseline and candidate_sigs:
+                                            if not _http_signatures_match(baseline, candidate_sigs):
+                                                # DNS IP-set overlap can happen on CDNs; if HTTP content differs
+                                                # from a random wildcard probe, treat it as a real resolved host.
+                                                candidate = Result(
+                                                    subdomain=res.subdomain,
+                                                    ips=res.ips,
+                                                    status="resolved",
+                                                    elapsed_ms=res.elapsed_ms,
+                                                    attempts=res.attempts,
+                                                    retries=res.retries,
+                                                    error=res.error,
+                                                    error_type=res.error_type,
+                                                    error_code=res.error_code,
+                                                    takeover=res.takeover,
+                                                )
+
+                                    res = candidate
 
                 if takeover_checker is not None and res.status in {"resolved", "wildcard"}:
                     takeover_checked += 1
@@ -438,6 +496,9 @@ def scan_domains_summary(
     statuses: set[str] | None = None,
     detect_wildcard: bool = False,
     wildcard_probes: int = 2,
+    wildcard_threshold: int = 1,
+    wildcard_verify_http: bool = False,
+    wildcard_http_timeout: float = 3.0,
     retries: int = 0,
     retry_backoff_ms: int = 50,
     extra_labels: Iterable[str] | None = None,
@@ -463,6 +524,9 @@ def scan_domains_summary(
         statuses=statuses,
         detect_wildcard=detect_wildcard,
         wildcard_probes=wildcard_probes,
+        wildcard_threshold=wildcard_threshold,
+        wildcard_verify_http=wildcard_verify_http,
+        wildcard_http_timeout=wildcard_http_timeout,
         retries=retries,
         retry_backoff_ms=retry_backoff_ms,
         ct_labels=ct_labels_count,
@@ -484,6 +548,9 @@ def scan_domains_summary_lines(
     statuses: set[str] | None = None,
     detect_wildcard: bool = False,
     wildcard_probes: int = 2,
+    wildcard_threshold: int = 1,
+    wildcard_verify_http: bool = False,
+    wildcard_http_timeout: float = 3.0,
     retries: int = 0,
     retry_backoff_ms: int = 50,
     extra_labels: Iterable[str] | None = None,
@@ -509,6 +576,9 @@ def scan_domains_summary_lines(
         statuses=statuses,
         detect_wildcard=detect_wildcard,
         wildcard_probes=wildcard_probes,
+        wildcard_threshold=wildcard_threshold,
+        wildcard_verify_http=wildcard_verify_http,
+        wildcard_http_timeout=wildcard_http_timeout,
         retries=retries,
         retry_backoff_ms=retry_backoff_ms,
         ct_labels=ct_labels_count,
@@ -588,3 +658,61 @@ def _load_resume_labels(out_path: Path | None, *, domain: str) -> set[str]:
                 continue
             seen.add(normalized)
     return seen
+
+
+def _http_signatures_for_host(hostname: str, *, timeout: float) -> dict[str, tuple[int, str]]:
+    """
+    Fetch lightweight HTTP response signatures for a host.
+
+    Returns mapping scheme -> (status_code, body_digest_hex).
+    """
+    sigs: dict[str, tuple[int, str]] = {}
+    for scheme in ("https", "http"):
+        url = f"{scheme}://{hostname}/"
+        response = _fetch_http_response(url, timeout=timeout)
+        if response is None:
+            continue
+        status_code, body = response
+        digest = _digest_http_body(body, hostname=hostname)
+        sigs[scheme] = (status_code, digest)
+    return sigs
+
+
+def _http_signatures_match(
+    baseline: dict[str, tuple[int, str]],
+    candidate: dict[str, tuple[int, str]],
+) -> bool:
+    for scheme, (status, digest) in baseline.items():
+        cand = candidate.get(scheme)
+        if cand is None:
+            continue
+        if cand == (status, digest):
+            return True
+    return False
+
+
+def _digest_http_body(body: str, *, hostname: str) -> str:
+    """
+    Normalize and hash body content to make wildcard-baseline comparisons less brittle.
+
+    Some wildcard landing pages echo the hostname; strip it to avoid false mismatches.
+    """
+    normalized = body.lower()
+    normalized = normalized.replace(hostname.lower(), "")
+    normalized = re.sub(r"_sdscout-[0-9a-f]{16}", "_sdscout-", normalized)
+    normalized = re.sub(r"\\s+", " ", normalized).strip()
+    return hashlib.sha256(normalized.encode("utf-8", errors="ignore")).hexdigest()
+
+
+def _fetch_http_response(url: str, *, timeout: float) -> tuple[int, str] | None:
+    req = urllib.request.Request(url=url, headers={"User-Agent": "subdomain-scout/0.1.1"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            status = int(resp.getcode())
+            body = resp.read(16384).decode("utf-8", errors="ignore")
+            return status, body
+    except urllib.error.HTTPError as e:
+        body = e.read(16384).decode("utf-8", errors="ignore")
+        return int(e.code), body
+    except (TimeoutError, OSError, urllib.error.URLError):
+        return None
