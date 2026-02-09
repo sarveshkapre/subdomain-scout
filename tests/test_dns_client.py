@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import socketserver
 import struct
 import subprocess
@@ -11,7 +12,7 @@ from typing import Final, Iterator
 
 import pytest
 
-from subdomain_scout.dns_client import parse_nameserver
+from subdomain_scout.dns_client import load_nameservers_file, parse_nameserver
 
 
 def test_parse_nameserver_ipv4_and_port() -> None:
@@ -26,6 +27,22 @@ def test_parse_nameserver_ipv6_bracketed() -> None:
 
 def test_parse_nameserver_ipv6_unbracketed_no_port() -> None:
     assert parse_nameserver("2606:4700:4700::1111") == ("2606:4700:4700::1111", 53)
+
+
+def test_load_nameservers_file_skips_comments_and_dedupes(tmp_path: Path) -> None:
+    p = tmp_path / "resolvers.txt"
+    p.write_text(
+        "\n# comment\n1.1.1.1\n1.1.1.1 # dup\n[2606:4700:4700::1111]:53\n",
+        encoding="utf-8",
+    )
+    assert load_nameservers_file(p) == [("1.1.1.1", 53), ("2606:4700:4700::1111", 53)]
+
+
+def test_load_nameservers_file_errors_on_empty(tmp_path: Path) -> None:
+    p = tmp_path / "resolvers.txt"
+    p.write_text("# only comments\n\n", encoding="utf-8")
+    with pytest.raises(ValueError, match=re.escape(f"resolver file {p} contains no valid entries")):
+        load_nameservers_file(p)
 
 
 class _DnsHandler(socketserver.BaseRequestHandler):
@@ -148,3 +165,43 @@ def test_cli_scan_with_custom_resolver(tmp_path: Path, dns_server: tuple[str, in
     summary = json.loads(proc.stderr.strip())
     assert summary["attempted"] == 1
     assert summary["resolved"] == 1
+
+
+def test_cli_scan_with_resolver_file(tmp_path: Path, dns_server: tuple[str, int]) -> None:
+    host, port = dns_server
+    wordlist = tmp_path / "words.txt"
+    wordlist.write_text("a\n", encoding="utf-8")
+
+    resolvers = tmp_path / "resolvers.txt"
+    resolvers.write_text(f"{host}:{port}\n", encoding="utf-8")
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "subdomain_scout",
+            "scan",
+            "--domain",
+            "res.test",
+            "--wordlist",
+            str(wordlist),
+            "--out",
+            "-",
+            "--only-resolved",
+            "--resolver-file",
+            str(resolvers),
+            "--timeout",
+            "0.2",
+            "--concurrency",
+            "1",
+            "--summary-json",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0
+    record = json.loads(proc.stdout.strip())
+    assert record["subdomain"] == "a.res.test"
+    assert record["status"] == "resolved"
+    assert record["ips"] == ["1.2.3.4"]

@@ -17,6 +17,7 @@
 - Add strict domain/label validation for safer CLI input handling.
 - Add optional takeover fingerprint checks during scans (`--takeover-check`) with confidence scoring and custom catalog support.
 - Add optional custom DNS resolver pinning (`scan --resolver`) for reproducible scans across environments.
+- Add `scan --resolver-file` to load resolver lists from a file (one resolver per line).
 - Add resume/append scan mode (`scan --resume`) to skip already-seen labels when writing to an existing output file.
 
 ## How to try it

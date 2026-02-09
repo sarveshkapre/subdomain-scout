@@ -63,7 +63,9 @@ def test_scan_marks_wildcard_status(monkeypatch: pytest.MonkeyPatch, tmp_path: P
     )
 
 
-def test_scan_marks_multilevel_wildcard_status(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_scan_marks_multilevel_wildcard_status(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     # Root does not wildcard, but "*.dev.wild.test" does.
     tokens = iter(["aaaa", "bbbb"])
     monkeypatch.setattr("subdomain_scout.scanner.secrets.token_hex", lambda _n: next(tokens))
@@ -98,8 +100,10 @@ def test_scan_marks_multilevel_wildcard_status(monkeypatch: pytest.MonkeyPatch, 
 
     lines = out.read_text(encoding="utf-8").splitlines()
     assert any(
-        '"subdomain": "foo.dev.wild.test"' in line and '"status": "wildcard"' in line for line in lines
+        '"subdomain": "foo.dev.wild.test"' in line and '"status": "wildcard"' in line
+        for line in lines
     )
     assert any(
-        '"subdomain": "real.dev.wild.test"' in line and '"status": "resolved"' in line for line in lines
+        '"subdomain": "real.dev.wild.test"' in line and '"status": "resolved"' in line
+        for line in lines
     )

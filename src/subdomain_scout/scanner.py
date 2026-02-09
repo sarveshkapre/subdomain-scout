@@ -526,7 +526,9 @@ def detect_wildcard_ips(
     timeout: float = 3.0,
     nameservers: list[tuple[str, int]] | None = None,
 ) -> set[str] | None:
-    ipsets = _detect_wildcard_ipsets(domain, probes=probes, timeout=timeout, nameservers=nameservers)
+    ipsets = _detect_wildcard_ipsets(
+        domain, probes=probes, timeout=timeout, nameservers=nameservers
+    )
     if not ipsets:
         return None
     # Back-compat: return the "strongest" (most frequently observed) ipset.

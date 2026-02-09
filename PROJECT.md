@@ -29,6 +29,7 @@ subdomain-scout scan --domain example.com --wordlist words.txt --out subdomains.
 subdomain-scout scan --domain example.com --wordlist words.txt --out - --detect-wildcard --only-resolved
 subdomain-scout scan --domain example.com --wordlist words.txt --out - --summary-json
 subdomain-scout scan --domain example.com --wordlist words.txt --out - --only-resolved --resolver 1.1.1.1
+subdomain-scout scan --domain example.com --wordlist words.txt --out - --only-resolved --resolver-file resolvers.txt
 subdomain-scout scan --domain example.com --wordlist words.txt --out subdomains.jsonl --resume
 subdomain-scout scan --domain example.com --wordlist words.txt --out - --takeover-check --summary-json
 subdomain-scout scan --domain example.com --wordlist words.txt --out - --takeover-check --takeover-fingerprints fingerprints.json --summary-json

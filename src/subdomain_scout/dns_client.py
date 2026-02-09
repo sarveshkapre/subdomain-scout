@@ -5,6 +5,7 @@ import socket
 import secrets
 import struct
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Sequence
 
 
@@ -68,6 +69,35 @@ def parse_nameserver(spec: str) -> tuple[str, int]:
         raise ValueError("invalid resolver port")
 
     return host, port
+
+
+def load_nameservers_file(path: Path) -> list[tuple[str, int]]:
+    """
+    Load resolver IP[:port] entries from a file.
+
+    - Skips blank lines and lines starting with '#'.
+    - Allows inline comments after '#'.
+    - Dedupes entries while preserving order.
+    """
+    entries: list[tuple[str, int]] = []
+    seen: set[tuple[str, int]] = set()
+    with path.open("r", encoding="utf-8") as fh:
+        for lineno, raw_line in enumerate(fh, start=1):
+            line = raw_line.split("#", 1)[0].strip()
+            if not line:
+                continue
+            spec = line.split(maxsplit=1)[0]
+            try:
+                ns = parse_nameserver(spec)
+            except ValueError as e:
+                raise ValueError(f"invalid resolver in {path}:{lineno}: {e}") from e
+            if ns in seen:
+                continue
+            seen.add(ns)
+            entries.append(ns)
+    if not entries:
+        raise ValueError(f"resolver file {path} contains no valid entries")
+    return entries
 
 
 def resolve_ips(

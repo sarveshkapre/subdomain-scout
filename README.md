@@ -20,6 +20,7 @@ make check
 subdomain-scout scan --domain example.com --wordlist ./words.txt --out subdomains.jsonl
 subdomain-scout scan --domain example.com --wordlist ./words.txt --out - --only-resolved
 subdomain-scout scan --domain example.com --wordlist ./words.txt --out - --only-resolved --resolver 1.1.1.1
+subdomain-scout scan --domain example.com --wordlist ./words.txt --out - --only-resolved --resolver-file ./resolvers.txt
 subdomain-scout scan --domain example.com --wordlist ./words.txt --out - --detect-wildcard --only-resolved
 subdomain-scout scan --domain example.com --wordlist ./words.txt --out - --status resolved --status wildcard
 subdomain-scout scan --domain example.com --wordlist ./words.txt --out - --summary-json

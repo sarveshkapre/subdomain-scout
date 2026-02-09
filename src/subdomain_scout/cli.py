@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from .ct import fetch_ct_subdomains, subdomains_to_labels
-from .dns_client import parse_nameserver
+from .dns_client import load_nameservers_file, parse_nameserver
 from .diff import compute_diff, load_jsonl
 from .scanner import scan_domains_summary, scan_domains_summary_lines
 from .takeover import build_takeover_checker
@@ -33,6 +33,11 @@ def main(argv: list[str] | None = None) -> int:
         action="append",
         default=None,
         help="Custom DNS resolver IP[:port] (repeatable; supports [IPv6]:port). When set, bypasses the system resolver.",
+    )
+    p_scan.add_argument(
+        "--resolver-file",
+        default=None,
+        help="Path to resolver list file (one IP[:port] per line; '#' comments allowed). When set, bypasses the system resolver.",
     )
     p_scan.add_argument(
         "--resume",
@@ -204,9 +209,21 @@ def _run_scan(args: argparse.Namespace) -> int:
             return 2
 
     nameservers = None
-    if args.resolver:
+    if args.resolver_file or args.resolver:
         try:
-            nameservers = [parse_nameserver(s) for s in args.resolver]
+            resolvers: list[tuple[str, int]] = []
+            if args.resolver_file:
+                resolvers.extend(load_nameservers_file(Path(str(args.resolver_file))))
+            if args.resolver:
+                resolvers.extend(parse_nameserver(s) for s in args.resolver)
+            # Dedup while preserving order.
+            seen: set[tuple[str, int]] = set()
+            nameservers = []
+            for item in resolvers:
+                if item in seen:
+                    continue
+                seen.add(item)
+                nameservers.append(item)
         except ValueError as e:
             print(f"error: {e}", file=sys.stderr)
             return 2
