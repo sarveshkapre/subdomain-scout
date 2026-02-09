@@ -20,12 +20,15 @@
 - [x] (2026-02-09) Improved wildcard detection for multi-level labels by probing per-suffix wildcards (e.g. `*.dev.example.com`) and caching results.
   - Evidence: `src/subdomain_scout/scanner.py`, `tests/test_wildcard.py`, `CHANGELOG.md`
   - Commit: `0e4395e`
+  - CI: `21827776075` (failed ruff formatting; fixed in subsequent commit)
 - [x] (2026-02-09) Added resolver list file support via `scan --resolver-file` (skip blanks/comments; dedupe) and documented it.
   - Evidence: `src/subdomain_scout/cli.py`, `src/subdomain_scout/dns_client.py`, `tests/test_dns_client.py`, `README.md`, `PROJECT.md`, `UPDATE.md`, `CHANGELOG.md`
   - Commit: `66128ab`
+  - CI: `21827852953` (success)
 - [x] (2026-02-09) Single-sourced CLI `--version` from the source checkout (`pyproject.toml`) with a metadata fallback for installed builds, plus a guard test.
   - Evidence: `src/subdomain_scout/version.py`, `src/subdomain_scout/cli.py`, `tests/test_cli_version.py`
   - Commit: `3bba7a6`
+  - CI: `21827917275` (success)
 - [x] (2026-02-09) Added takeover checks to `scan` with a versioned default fingerprint catalog and confidence scoring.
   - Evidence: `src/subdomain_scout/takeover.py`, `src/subdomain_scout/scanner.py`, `src/subdomain_scout/cli.py`
 - [x] (2026-02-09) Added takeover-focused test coverage for catalog loading, scoring, scanner integration, and CLI wiring.
@@ -84,6 +87,7 @@ printf 'www\n' | .venv/bin/python -m subdomain_scout scan --domain example.com -
   - `make check` (pass; 40 tests)
   - `.venv/bin/python -m subdomain_scout --version` (pass; `0.1.1`)
   - `printf "www\napi\n" | .venv/bin/python -m subdomain_scout scan --domain example.com --wordlist - --out - --only-resolved --concurrency 1 --timeout 2 --summary-json` (pass; `attempted=2 resolved=1 wrote=1`)
+  - CI: `21828007575` (success; head `64cde30`)
 
 ## Insights
 - The highest product leverage at this stage is combining passive CT discovery with active DNS validation in one workflow (`scan --ct`), which materially improves discovery yield with minimal user overhead.

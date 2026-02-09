@@ -92,6 +92,11 @@ Structured project memory for autonomous maintenance runs.
 
 ## Mistakes And Fixes
 
+### 2026-02-09 - CI failed due to missed formatter run
+- Root cause: Pushed a functional change without running the canonical gate (`make check`), so CI failed on `ruff format --check`.
+- Fix: Ran `ruff format` and shipped the follow-up commit that included the formatting changes.
+- Prevention rule: Always run `make check` locally before pushing to `main`.
+
 ### 2026-02-09 - Editable install version drift in `--version`
 - Root cause: `importlib.metadata.version()` returns the version recorded at install time; editable installs don’t automatically refresh metadata when `pyproject.toml` changes.
 - Fix: Prefer parsing `pyproject.toml` when present (source checkout), with metadata as a fallback for installed builds.
