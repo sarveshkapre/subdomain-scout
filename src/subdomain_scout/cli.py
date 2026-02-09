@@ -12,11 +12,12 @@ from .diff import compute_diff, load_jsonl
 from .scanner import scan_domains_summary, scan_domains_summary_lines
 from .takeover import build_takeover_checker
 from .validation import normalize_domain
+from .version import get_version
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="subdomain-scout")
-    parser.add_argument("--version", action="version", version="0.1.1")
+    parser.add_argument("--version", action="version", version=get_version())
 
     sub = parser.add_subparsers(dest="cmd", required=True)
     p_scan = sub.add_parser("scan", help="Scan subdomains from wordlist")
