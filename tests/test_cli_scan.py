@@ -100,3 +100,33 @@ def test_scan_supports_wordlist_stdin(tmp_path: Path) -> None:
     assert proc.stdout.strip() == ""
     payload = json.loads(proc.stderr.strip())
     assert payload["attempted"] == 1
+
+
+def test_scan_resume_requires_file_output(tmp_path: Path) -> None:
+    wordlist = tmp_path / "words.txt"
+    wordlist.write_text("www\n", encoding="utf-8")
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "subdomain_scout",
+            "scan",
+            "--domain",
+            "invalid.test",
+            "--wordlist",
+            str(wordlist),
+            "--out",
+            "-",
+            "--resume",
+            "--timeout",
+            "0.1",
+            "--concurrency",
+            "1",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 2
+    assert "resume requires file output" in proc.stderr.lower()

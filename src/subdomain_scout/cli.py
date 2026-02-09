@@ -34,6 +34,11 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Custom DNS resolver IP[:port] (repeatable; supports [IPv6]:port). When set, bypasses the system resolver.",
     )
+    p_scan.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume/append mode: skip labels already present in the existing --out file and append new results.",
+    )
     p_scan.add_argument("--concurrency", type=int, default=20)
     p_scan.add_argument(
         "--summary-json",
@@ -225,6 +230,7 @@ def _run_scan(args: argparse.Namespace) -> int:
                 ct_labels_count=len(ct_labels),
                 takeover_checker=takeover_checker,
                 nameservers=nameservers,
+                resume=bool(args.resume),
             )
         else:
             summary = scan_domains_summary(
@@ -243,6 +249,7 @@ def _run_scan(args: argparse.Namespace) -> int:
                 ct_labels_count=len(ct_labels),
                 takeover_checker=takeover_checker,
                 nameservers=nameservers,
+                resume=bool(args.resume),
             )
     except FileNotFoundError as e:
         print(f"error: file not found: {e.filename}", file=sys.stderr)
@@ -265,6 +272,7 @@ def _run_scan(args: argparse.Namespace) -> int:
                     "labels_total": summary.labels_total,
                     "labels_unique": summary.labels_unique,
                     "labels_deduped": summary.labels_deduped,
+                    "labels_skipped_existing": summary.labels_skipped_existing,
                     "ct_labels": summary.ct_labels,
                     "takeover_checked": summary.takeover_checked,
                     "takeover_suspected": summary.takeover_suspected,
@@ -286,6 +294,7 @@ def _run_scan(args: argparse.Namespace) -> int:
             f" labels_total={summary.labels_total}"
             f" labels_unique={summary.labels_unique}"
             f" labels_deduped={summary.labels_deduped}"
+            f" labels_skipped_existing={summary.labels_skipped_existing}"
             f" ct_labels={summary.ct_labels}"
             f" takeover_checked={summary.takeover_checked}"
             f" takeover_suspected={summary.takeover_suspected}"

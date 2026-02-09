@@ -196,6 +196,7 @@ class ScanSummary:
     labels_total: int
     labels_unique: int
     labels_deduped: int
+    labels_skipped_existing: int
     ct_labels: int
     takeover_checked: int
     takeover_suspected: int
@@ -224,12 +225,16 @@ def _iter_fqdns(domain: str, labels: Iterable[str]) -> Iterable[str]:
 
 
 @contextlib.contextmanager
-def _output_stream(out_path: Path | None) -> Iterator[tuple[TextIO, Path | None]]:
+def _output_stream(out_path: Path | None, *, append: bool) -> Iterator[tuple[TextIO, Path | None]]:
     if out_path is None:
         yield sys.stdout, None
         return
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    if append:
+        with out_path.open("a", encoding="utf-8") as out:
+            yield out, None
+        return
     tmp_path = out_path.with_name(out_path.name + ".tmp")
     with tmp_path.open("w", encoding="utf-8") as out:
         yield out, tmp_path
@@ -256,6 +261,8 @@ def _scan_core(
     ct_labels: int,
     takeover_checker: Callable[[str], dict[str, Any] | None] | None,
     nameservers: list[tuple[str, int]] | None,
+    resume_seen_labels: set[str] | None,
+    append_out: bool,
 ) -> ScanSummary:
     if concurrency < 1:
         raise ValueError("concurrency must be >= 1")
@@ -274,6 +281,7 @@ def _scan_core(
     labels_total = 0
     labels_unique = 0
     labels_deduped = 0
+    labels_skipped_existing = 0
     takeover_checked = 0
     takeover_suspected = 0
 
@@ -309,12 +317,12 @@ def _scan_core(
             if executor is not None:
                 stack.enter_context(executor)
 
-            out, _tmp_path = stack.enter_context(_output_stream(out_path))
+            out, _tmp_path = stack.enter_context(_output_stream(out_path, append=append_out))
 
             seen_labels: set[str] = set()
 
             def iter_unique_labels() -> Iterator[str]:
-                nonlocal labels_total, labels_unique, labels_deduped
+                nonlocal labels_total, labels_unique, labels_deduped, labels_skipped_existing
                 for label in labels:
                     labels_total += 1
                     if label in seen_labels:
@@ -322,6 +330,9 @@ def _scan_core(
                         continue
                     seen_labels.add(label)
                     labels_unique += 1
+                    if resume_seen_labels is not None and label in resume_seen_labels:
+                        labels_skipped_existing += 1
+                        continue
                     yield label
 
             names = _iter_fqdns(domain, iter_unique_labels())
@@ -394,6 +405,7 @@ def _scan_core(
         labels_total=labels_total,
         labels_unique=labels_unique,
         labels_deduped=labels_deduped,
+        labels_skipped_existing=labels_skipped_existing,
         ct_labels=ct_labels,
         takeover_checked=takeover_checked,
         takeover_suspected=takeover_suspected,
@@ -418,6 +430,7 @@ def scan_domains_summary(
     ct_labels_count: int = 0,
     takeover_checker: Callable[[str], dict[str, Any] | None] | None = None,
     nameservers: list[tuple[str, int]] | None = None,
+    resume: bool = False,
 ) -> ScanSummary:
     if only_resolved and statuses is not None:
         raise ValueError("only_resolved and statuses cannot both be set")
@@ -426,6 +439,7 @@ def scan_domains_summary(
     labels = _iter_labels(wordlist)
     if extra_labels:
         labels = itertools.chain(labels, extra_labels)
+    resume_seen_labels = _load_resume_labels(out_path, domain=domain) if resume else None
     return _scan_core(
         domain=domain,
         labels=labels,
@@ -440,6 +454,8 @@ def scan_domains_summary(
         ct_labels=ct_labels_count,
         takeover_checker=takeover_checker,
         nameservers=nameservers,
+        resume_seen_labels=resume_seen_labels,
+        append_out=bool(resume),
     )
 
 
@@ -460,6 +476,7 @@ def scan_domains_summary_lines(
     ct_labels_count: int = 0,
     takeover_checker: Callable[[str], dict[str, Any] | None] | None = None,
     nameservers: list[tuple[str, int]] | None = None,
+    resume: bool = False,
 ) -> ScanSummary:
     if only_resolved and statuses is not None:
         raise ValueError("only_resolved and statuses cannot both be set")
@@ -468,6 +485,7 @@ def scan_domains_summary_lines(
     labels = _iter_labels_lines(wordlist_lines)
     if extra_labels:
         labels = itertools.chain(labels, extra_labels)
+    resume_seen_labels = _load_resume_labels(out_path, domain=domain) if resume else None
     return _scan_core(
         domain=domain,
         labels=labels,
@@ -482,6 +500,8 @@ def scan_domains_summary_lines(
         ct_labels=ct_labels_count,
         takeover_checker=takeover_checker,
         nameservers=nameservers,
+        resume_seen_labels=resume_seen_labels,
+        append_out=bool(resume),
     )
 
 
@@ -505,3 +525,39 @@ def detect_wildcard_ips(
         if count >= 2:
             return set(ipset)
     return None
+
+
+def _load_resume_labels(out_path: Path | None, *, domain: str) -> set[str]:
+    if out_path is None:
+        raise ValueError("resume requires file output (--out path, not '-')")
+    if not out_path.exists():
+        return set()
+
+    suffix = f".{domain}"
+    seen: set[str] = set()
+    with out_path.open("r", encoding="utf-8") as fh:
+        for raw in fh:
+            line = raw.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(obj, dict):
+                continue
+            subdomain_raw = obj.get("subdomain")
+            if not isinstance(subdomain_raw, str):
+                continue
+            subdomain = subdomain_raw.strip().strip(".").lower()
+            if not subdomain.endswith(suffix) or subdomain == domain:
+                continue
+            label = subdomain[: -len(suffix)]
+            if not label:
+                continue
+            try:
+                normalized = normalize_label(label)
+            except ValueError:
+                continue
+            seen.add(normalized)
+    return seen
