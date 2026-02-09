@@ -6,6 +6,7 @@
 - Support writing NDJSON to stdout via `--out -`.
 - Add `diff` command to compare two JSONL/NDJSON runs (`subdomain-scout diff`).
 - Add best-effort wildcard DNS detection (`--detect-wildcard`) and mark matching records as `status=wildcard`.
+- Improve wildcard detection for multi-level labels by probing per-suffix wildcards (e.g. `*.dev.example.com`).
 - Add flexible scan output filtering via `--status` and retry on transient DNS errors (`--retries`).
 - Add machine-readable summaries to stderr via `--summary-json` for `scan` and `diff`.
 - Allow `--wordlist -` to read labels from stdin for pipeline-friendly scans.

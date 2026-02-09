@@ -294,11 +294,18 @@ def _scan_core(
     prev_timeout = socket.getdefaulttimeout()
     socket.setdefaulttimeout(timeout)
     try:
-        wildcard_ips: set[str] | None = None
-        if detect_wildcard:
-            wildcard_ips = detect_wildcard_ips(
-                domain, probes=wildcard_probes, timeout=timeout, nameservers=nameservers
+        wildcard_cache: dict[str, set[frozenset[str]]] = {}
+
+        def wildcard_ipsets_for_zone(zone: str) -> set[frozenset[str]]:
+            cached = wildcard_cache.get(zone)
+            if cached is not None:
+                return cached
+            hits = _detect_wildcard_ipsets(
+                zone, probes=wildcard_probes, timeout=timeout, nameservers=nameservers
             )
+            ipsets = {ipset for ipset, count in hits.items() if count >= 2}
+            wildcard_cache[zone] = ipsets
+            return ipsets
 
         executor: ThreadPoolExecutor | None = None
         if concurrency > 1:
@@ -344,19 +351,26 @@ def _scan_core(
 
             for res in results:
                 attempted += 1
-                if wildcard_ips and res.status == "resolved" and set(res.ips) == wildcard_ips:
-                    res = Result(
-                        subdomain=res.subdomain,
-                        ips=res.ips,
-                        status="wildcard",
-                        elapsed_ms=res.elapsed_ms,
-                        attempts=res.attempts,
-                        retries=res.retries,
-                        error=res.error,
-                        error_type=res.error_type,
-                        error_code=res.error_code,
-                        takeover=res.takeover,
-                    )
+                if detect_wildcard and res.status == "resolved" and res.ips:
+                    # Handle multi-level wildcards by probing the immediate suffix of the hostname.
+                    # Example: for "foo.dev.example.com", probe "*.dev.example.com".
+                    parts = res.subdomain.split(".", 1)
+                    if len(parts) == 2:
+                        zone = parts[1]
+                        ipsets = wildcard_ipsets_for_zone(zone)
+                        if ipsets and frozenset(res.ips) in ipsets:
+                            res = Result(
+                                subdomain=res.subdomain,
+                                ips=res.ips,
+                                status="wildcard",
+                                elapsed_ms=res.elapsed_ms,
+                                attempts=res.attempts,
+                                retries=res.retries,
+                                error=res.error,
+                                error_type=res.error_type,
+                                error_code=res.error_code,
+                                takeover=res.takeover,
+                            )
 
                 if takeover_checker is not None and res.status in {"resolved", "wildcard"}:
                     takeover_checked += 1
@@ -512,19 +526,30 @@ def detect_wildcard_ips(
     timeout: float = 3.0,
     nameservers: list[tuple[str, int]] | None = None,
 ) -> set[str] | None:
+    ipsets = _detect_wildcard_ipsets(domain, probes=probes, timeout=timeout, nameservers=nameservers)
+    if not ipsets:
+        return None
+    # Back-compat: return the "strongest" (most frequently observed) ipset.
+    best = max(ipsets.items(), key=lambda kv: kv[1])[0]
+    return set(best)
+
+
+def _detect_wildcard_ipsets(
+    zone: str,
+    *,
+    probes: int,
+    timeout: float,
+    nameservers: list[tuple[str, int]] | None,
+) -> dict[frozenset[str], int]:
     hits: dict[frozenset[str], int] = {}
     for _ in range(probes):
         label = f"_sdscout-{secrets.token_hex(8)}"
-        res = _resolve(f"{label}.{domain}", timeout=timeout, nameservers=nameservers)
+        res = _resolve(f"{label}.{zone}", timeout=timeout, nameservers=nameservers)
         if res.status != "resolved" or not res.ips:
             continue
         ipset = frozenset(res.ips)
         hits[ipset] = hits.get(ipset, 0) + 1
-
-    for ipset, count in hits.items():
-        if count >= 2:
-            return set(ipset)
-    return None
+    return hits
 
 
 def _load_resume_labels(out_path: Path | None, *, domain: str) -> set[str]:

@@ -44,5 +44,5 @@ See `PROJECT.md` for the canonical commands:
 
 ## Next
 
-- Improve wildcard DNS handling to reduce false positives (especially on multi-level wildcards).
+- Improve wildcard DNS handling to reduce false positives (especially on CDN-backed domains where wildcard IPs overlap with real hosts).
 - Expand takeover fingerprint coverage with false-positive guardrails.
