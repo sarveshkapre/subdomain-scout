@@ -60,6 +60,7 @@ printf 'www\n' | .venv/bin/python -m subdomain_scout scan --domain example.com -
   - Commit: `a4396bf`
 - [x] (2026-02-09) Updated docs and trackers to reflect `--resolver` and `--resume` behavior.
   - Evidence: `README.md`, `PROJECT.md`, `PLAN.md`, `ROADMAP.md`, `CHANGELOG.md`, `UPDATE.md`, `CLONE_FEATURES.md`, `PROJECT_MEMORY.md`
+  - Commit: `81dfc45`
 
 ## Insights
 - The highest product leverage at this stage is combining passive CT discovery with active DNS validation in one workflow (`scan --ct`), which materially improves discovery yield with minimal user overhead.
