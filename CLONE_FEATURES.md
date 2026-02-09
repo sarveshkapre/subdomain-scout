@@ -7,9 +7,7 @@
 - Gaps found during codebase exploration
 
 ## Candidate Features To Do
-- [ ] (P1) (Selected) Improve wildcard DNS handling for multi-level labels (detect wildcard at each suffix like `*.dev.example.com`), with caching and tests. [impact:5 effort:3 fit:5 diff:3 risk:2 conf:4]
-- [ ] (P2) (Selected) Add `scan --resolver-file` to load resolver IP[:port] entries from a file (skip blanks/comments; repeatable with `--resolver`). [impact:4 effort:2 fit:5 diff:2 risk:1 conf:4]
-- [ ] (P2) (Selected) Single-source CLI `--version` from package metadata (avoid drift vs `pyproject.toml`) and add a guard test. [impact:3 effort:1 fit:4 diff:1 risk:1 conf:5]
+- [ ] (P2) Reduce wildcard false positives on CDN-backed domains (per-IP thresholding and/or content comparison against random wildcard probe). [impact:5 effort:4 fit:5 diff:3 risk:3 conf:3]
 - [ ] (P2) Expand built-in takeover fingerprints and add false-positive guard tests per provider. [impact:3 effort:3 fit:4 diff:3 risk:2 conf:3]
 - [ ] (P3) Add output schema versioning: include a `schema_version` in summaries and document stability expectations. [impact:3 effort:2 fit:4 diff:2 risk:2 conf:3]
 - [ ] (P3) Add a `scan --progress` option to print periodic progress/stats to stderr for long runs. [impact:3 effort:2 fit:3 diff:1 risk:1 conf:3]
@@ -19,6 +17,15 @@
 - [ ] (P3) Add `scan --hosts` mode to accept full hostnames (one per line) in addition to label+domain composition. [impact:2 effort:3 fit:3 diff:1 risk:2 conf:3]
 
 ## Implemented
+- [x] (2026-02-09) Improved wildcard detection for multi-level labels by probing per-suffix wildcards (e.g. `*.dev.example.com`) and caching results.
+  - Evidence: `src/subdomain_scout/scanner.py`, `tests/test_wildcard.py`, `CHANGELOG.md`
+  - Commit: `0e4395e`
+- [x] (2026-02-09) Added resolver list file support via `scan --resolver-file` (skip blanks/comments; dedupe) and documented it.
+  - Evidence: `src/subdomain_scout/cli.py`, `src/subdomain_scout/dns_client.py`, `tests/test_dns_client.py`, `README.md`, `PROJECT.md`, `UPDATE.md`, `CHANGELOG.md`
+  - Commit: `66128ab`
+- [x] (2026-02-09) Single-sourced CLI `--version` from the source checkout (`pyproject.toml`) with a metadata fallback for installed builds, plus a guard test.
+  - Evidence: `src/subdomain_scout/version.py`, `src/subdomain_scout/cli.py`, `tests/test_cli_version.py`
+  - Commit: `3bba7a6`
 - [x] (2026-02-09) Added takeover checks to `scan` with a versioned default fingerprint catalog and confidence scoring.
   - Evidence: `src/subdomain_scout/takeover.py`, `src/subdomain_scout/scanner.py`, `src/subdomain_scout/cli.py`
 - [x] (2026-02-09) Added takeover-focused test coverage for catalog loading, scoring, scanner integration, and CLI wiring.
@@ -73,6 +80,10 @@ printf 'www\n' | .venv/bin/python -m subdomain_scout scan --domain example.com -
 - [x] (2026-02-09) Verified CI success for follow-up feature-tracker CI logging commit.
   - Commit: `6bc20a0`
   - GitHub Actions run: `21820220535` (success)
+- [x] (2026-02-09) Verification evidence captured.
+  - `make check` (pass; 40 tests)
+  - `.venv/bin/python -m subdomain_scout --version` (pass; `0.1.1`)
+  - `printf "www\napi\n" | .venv/bin/python -m subdomain_scout scan --domain example.com --wordlist - --out - --only-resolved --concurrency 1 --timeout 2 --summary-json` (pass; `attempted=2 resolved=1 wrote=1`)
 
 ## Insights
 - The highest product leverage at this stage is combining passive CT discovery with active DNS validation in one workflow (`scan --ct`), which materially improves discovery yield with minimal user overhead.
@@ -81,7 +92,9 @@ printf 'www\n' | .venv/bin/python -m subdomain_scout scan --domain example.com -
 - Label deduplication is a low-risk performance win that reduces DNS calls and improves runtime determinism for repeated/merged sources.
 - Retry count visibility (`attempts`/`retries`) is important for CI troubleshooting when resolvers are flaky but eventually succeed.
 - Market scan notes (untrusted):
-  - Many subdomain/DNS tools treat custom resolver lists and resume as baseline UX for stable automation (e.g., ProjectDiscovery `dnsx` has `-r` resolver list and `-resume`). Sources: https://docs.projectdiscovery.io/opensource/dnsx/usage and https://github.com/projectdiscovery/dnsx
+  - Resolver lists and resume are baseline UX (e.g., ProjectDiscovery `dnsx` has `-r` resolver list input and `-resume`). Sources: https://docs.projectdiscovery.io/opensource/dnsx/usage and https://github.com/projectdiscovery/dnsx
+  - Wildcard handling often uses threshold-style heuristics (e.g., `dnsx` has `-wildcard-threshold`). Source: https://docs.projectdiscovery.io/opensource/dnsx/usage
+  - Tools like `puredns` emphasize wildcard filtering as a core feature and use resolver list files by default. Source: https://github.com/d3mondev/puredns
   - Amass exposes resolver configuration for controlling DNS behavior across runs. Source: https://github.com/OWASP/Amass/wiki/The-Configuration-File
 
 ## Notes
