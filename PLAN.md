@@ -38,8 +38,9 @@ See `PROJECT.md` for the canonical commands:
 - Optional CT label seeding for active scans via `scan --ct`.
 - Scan observability upgrades: dedupe metrics in summary + per-record retry metadata (`attempts`, `retries`).
 - Strict hostname validation for domains/labels to fail fast on malformed input.
+- Optional takeover fingerprint checks during scans via `--takeover-check` with confidence scoring and custom catalog loading.
 
 ## Next
 
-- Add takeover signal checks with a maintainable fingerprint catalog.
 - Add optional resolver controls (custom nameserver support) for reproducible CI scans.
+- Add resume/append support for long-running scans.

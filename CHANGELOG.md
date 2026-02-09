@@ -15,6 +15,7 @@
 - Add scan dedupe metrics (`labels_total`, `labels_unique`, `labels_deduped`, `ct_labels`) in summaries.
 - Add per-record retry metadata in scan output (`attempts`, `retries`).
 - Add strict domain/label validation to fail fast on malformed hostnames.
+- Add optional takeover checks during scans (`--takeover-check`) using a versioned fingerprint catalog with confidence scoring and custom catalog override support.
 
 ## v0.1.0 - 2026-01-31
 

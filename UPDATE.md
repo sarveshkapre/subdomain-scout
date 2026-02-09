@@ -15,6 +15,7 @@
 - Add `scan --ct` / `--ct-limit` / `--ct-timeout` to merge passive CT labels into active scans.
 - Improve scan observability with dedupe summary metrics and per-record retry metadata.
 - Add strict domain/label validation for safer CLI input handling.
+- Add optional takeover fingerprint checks during scans (`--takeover-check`) with confidence scoring and custom catalog support.
 
 ## How to try it
 
@@ -23,6 +24,7 @@ make setup
 make check
 subdomain-scout scan --domain example.com --wordlist words.txt --out subdomains.jsonl --concurrency 20
 subdomain-scout scan --domain example.com --wordlist words.txt --out - --only-resolved
+subdomain-scout scan --domain example.com --wordlist words.txt --out - --takeover-check --summary-json
 subdomain-scout scan --domain example.com --wordlist words.txt --out - --ct --ct-limit 200 --summary-json
 subdomain-scout ct --domain example.com --out - --limit 50 --summary-json
 subdomain-scout diff --old old.jsonl --new new.jsonl --resolved-only --fail-on-changes

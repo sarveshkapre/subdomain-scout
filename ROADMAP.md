@@ -13,8 +13,9 @@
 - CT log ingestion command (`subdomain-scout ct`) via `crt.sh`.
 - Optional CT seeding for active scans (`scan --ct`).
 - Label dedupe metrics and retry metadata in scan output.
+- Optional takeover signal checks with a versioned fingerprint catalog and confidence scoring.
 
 ## Next
 
-- Takeover signal checks.
-- Configurable takeover fingerprints + confidence scoring.
+- Optional custom DNS resolvers for reproducible CI scans.
+- Resume/append scan mode for long-running wordlists.
