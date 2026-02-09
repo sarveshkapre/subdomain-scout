@@ -87,7 +87,7 @@ printf 'www\n' | .venv/bin/python -m subdomain_scout scan --domain example.com -
   - `make check` (pass; 40 tests)
   - `.venv/bin/python -m subdomain_scout --version` (pass; `0.1.1`)
   - `printf "www\napi\n" | .venv/bin/python -m subdomain_scout scan --domain example.com --wordlist - --out - --only-resolved --concurrency 1 --timeout 2 --summary-json` (pass; `attempted=2 resolved=1 wrote=1`)
-  - CI: `21828007575` (success; head `64cde30`)
+  - CI: `21828058446` (success; head `65f8564`)
 
 ## Insights
 - The highest product leverage at this stage is combining passive CT discovery with active DNS validation in one workflow (`scan --ct`), which materially improves discovery yield with minimal user overhead.
