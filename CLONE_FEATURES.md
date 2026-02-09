@@ -29,6 +29,9 @@
 - [x] (2026-02-09) Pushed core feature commit and verified CI success.
   - Commit: `2d38df1`
   - GitHub Actions run: `21808091338` (success)
+- [x] (2026-02-09) Documentation/tracker alignment commit pushed and CI-verified.
+  - Commit: `c47e493`
+  - GitHub Actions run: `21808109894` (success)
 
 ## Insights
 - The highest product leverage at this stage is combining passive CT discovery with active DNS validation in one workflow (`scan --ct`), which materially improves discovery yield with minimal user overhead.
