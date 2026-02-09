@@ -25,10 +25,16 @@
 - [x] (2026-02-09) Verification evidence captured.
   - `make check` (pass; 29 tests)
   - `printf 'www\n' | .venv/bin/python -m subdomain_scout scan --domain example.com --wordlist - --out - --summary-json --takeover-check --timeout 2 --takeover-timeout 2 --concurrency 1` (pass; `takeover_checked=1`)
-- `tmp_fp=$(mktemp); cat > "$tmp_fp" <<'JSON'
+  - `tmp_fp=$(mktemp); cat > "$tmp_fp" <<'JSON'
 {"version":"smoke-v1","fingerprints":[{"service":"SmokeService","body_substrings":["example domain"],"status_codes":[200]}]}
 JSON
 printf 'www\n' | .venv/bin/python -m subdomain_scout scan --domain example.com --wordlist - --out - --summary-json --takeover-check --takeover-timeout 2 --takeover-fingerprints "$tmp_fp" --timeout 2 --concurrency 1; rm -f "$tmp_fp"` (pass; `takeover_suspected=1` smoke path)
+- [x] (2026-02-09) Pushed takeover feature implementation and verified CI success.
+  - Commit: `3eb6506`
+  - GitHub Actions run: `21809865029` (success)
+- [x] (2026-02-09) Pushed documentation/tracker sync commit and verified CI success.
+  - Commit: `73d9b93`
+  - GitHub Actions run: `21809876036` (success)
 - [x] (2026-02-09) Added CT ingestion via `crt.sh` with a dedicated `ct` CLI command and summary output.
   - Evidence: `src/subdomain_scout/ct.py`, `src/subdomain_scout/cli.py`, `tests/test_ct.py`, `tests/test_cli_ct.py`
 - [x] (2026-02-09) Added `scan --ct` integration to merge passive CT-derived labels with active wordlist scanning.
