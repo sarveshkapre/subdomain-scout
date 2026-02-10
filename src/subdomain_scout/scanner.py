@@ -508,22 +508,13 @@ def scan_domains_summary(
     nameservers: list[tuple[str, int]] | None = None,
     resume: bool = False,
 ) -> ScanSummary:
-    if only_resolved and statuses is not None:
-        raise ValueError("only_resolved and statuses cannot both be set")
-    if only_resolved:
-        statuses = {"resolved"}
-    if include_cname and nameservers is None:
-        raise ValueError("include_cname requires custom resolver mode (--resolver/--resolver-file)")
-    labels = _iter_labels(wordlist)
-    if extra_labels:
-        labels = itertools.chain(labels, extra_labels)
-    resume_seen_labels = _load_resume_labels(out_path, domain=domain) if resume else None
-    return _scan_core(
+    return _scan_domains_summary_labels(
         domain=domain,
-        labels=labels,
+        labels=_iter_labels(wordlist),
         out_path=out_path,
         timeout=timeout,
         concurrency=concurrency,
+        only_resolved=only_resolved,
         statuses=statuses,
         detect_wildcard=detect_wildcard,
         wildcard_probes=wildcard_probes,
@@ -535,11 +526,11 @@ def scan_domains_summary(
         progress_every_s=progress_every_s,
         retries=retries,
         retry_backoff_ms=retry_backoff_ms,
-        ct_labels=ct_labels_count,
+        extra_labels=extra_labels,
+        ct_labels_count=ct_labels_count,
         takeover_checker=takeover_checker,
         nameservers=nameservers,
-        resume_seen_labels=resume_seen_labels,
-        append_out=bool(resume),
+        resume=resume,
     )
 
 
@@ -568,19 +559,70 @@ def scan_domains_summary_lines(
     nameservers: list[tuple[str, int]] | None = None,
     resume: bool = False,
 ) -> ScanSummary:
+    return _scan_domains_summary_labels(
+        domain=domain,
+        labels=_iter_labels_lines(wordlist_lines),
+        out_path=out_path,
+        timeout=timeout,
+        concurrency=concurrency,
+        only_resolved=only_resolved,
+        statuses=statuses,
+        detect_wildcard=detect_wildcard,
+        wildcard_probes=wildcard_probes,
+        wildcard_threshold=wildcard_threshold,
+        wildcard_verify_http=wildcard_verify_http,
+        wildcard_http_timeout=wildcard_http_timeout,
+        include_cname=include_cname,
+        progress_stream=progress_stream,
+        progress_every_s=progress_every_s,
+        retries=retries,
+        retry_backoff_ms=retry_backoff_ms,
+        extra_labels=extra_labels,
+        ct_labels_count=ct_labels_count,
+        takeover_checker=takeover_checker,
+        nameservers=nameservers,
+        resume=resume,
+    )
+
+
+def _scan_domains_summary_labels(
+    *,
+    domain: str,
+    labels: Iterable[str],
+    out_path: Path | None,
+    timeout: float,
+    concurrency: int = 20,
+    only_resolved: bool = False,
+    statuses: set[str] | None = None,
+    detect_wildcard: bool = False,
+    wildcard_probes: int = 2,
+    wildcard_threshold: int = 1,
+    wildcard_verify_http: bool = False,
+    wildcard_http_timeout: float = 3.0,
+    include_cname: bool = False,
+    progress_stream: TextIO | None = None,
+    progress_every_s: float = 2.0,
+    retries: int = 0,
+    retry_backoff_ms: int = 50,
+    extra_labels: Iterable[str] | None = None,
+    ct_labels_count: int = 0,
+    takeover_checker: Callable[[str], dict[str, Any] | None] | None = None,
+    nameservers: list[tuple[str, int]] | None = None,
+    resume: bool = False,
+) -> ScanSummary:
     if only_resolved and statuses is not None:
         raise ValueError("only_resolved and statuses cannot both be set")
     if only_resolved:
         statuses = {"resolved"}
     if include_cname and nameservers is None:
         raise ValueError("include_cname requires custom resolver mode (--resolver/--resolver-file)")
-    labels = _iter_labels_lines(wordlist_lines)
+    labels_iter: Iterable[str] = labels
     if extra_labels:
-        labels = itertools.chain(labels, extra_labels)
+        labels_iter = itertools.chain(labels_iter, extra_labels)
     resume_seen_labels = _load_resume_labels(out_path, domain=domain) if resume else None
     return _scan_core(
         domain=domain,
-        labels=labels,
+        labels=labels_iter,
         out_path=out_path,
         timeout=timeout,
         concurrency=concurrency,
