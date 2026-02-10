@@ -128,3 +128,34 @@ def test_scan_takeover_checker_updates_summary_and_output(
     first = json.loads(lines[0])
     assert first["subdomain"] == "a.takeover.test"
     assert first["takeover"]["service"] == "Heroku"
+
+
+def test_scan_takeover_checker_preserves_cnames(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import subdomain_scout.scanner as scanner
+
+    def fake_resolve_with_retries(_name: str, **_kwargs: object) -> scanner.Result:
+        return scanner.Result(
+            subdomain="a.cname.test",
+            ips=["1.1.1.1"],
+            status="resolved",
+            elapsed_ms=1,
+            cnames=["target.example.com"],
+        )
+
+    monkeypatch.setattr(scanner, "_resolve_with_retries", fake_resolve_with_retries)
+
+    out = tmp_path / "out.jsonl"
+    summary = scanner.scan_domains_summary_lines(
+        domain="cname.test",
+        wordlist_lines=["a\n"],
+        out_path=out,
+        timeout=0.1,
+        concurrency=1,
+        takeover_checker=lambda host: {"service": "TestSvc"} if host == "a.cname.test" else None,
+    )
+    assert summary.written == 1
+    row = json.loads(out.read_text(encoding="utf-8").splitlines()[0])
+    assert row["cnames"] == ["target.example.com"]
+    assert row["takeover"]["service"] == "TestSvc"

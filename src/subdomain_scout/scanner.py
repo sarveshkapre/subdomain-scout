@@ -12,7 +12,7 @@ import time
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator, TextIO
 
@@ -173,45 +173,9 @@ def _resolve_with_retries(
             include_cname=include_cname,
         )
         attempts = attempt + 1
-        if res.status != "error":
-            return Result(
-                subdomain=res.subdomain,
-                ips=res.ips,
-                status=res.status,
-                elapsed_ms=res.elapsed_ms,
-                attempts=attempts,
-                retries=attempt,
-                error=res.error,
-                error_type=res.error_type,
-                error_code=res.error_code,
-                cnames=res.cnames,
-            )
-        if not _is_retryable(res):
-            return Result(
-                subdomain=res.subdomain,
-                ips=res.ips,
-                status=res.status,
-                elapsed_ms=res.elapsed_ms,
-                attempts=attempts,
-                retries=attempt,
-                error=res.error,
-                error_type=res.error_type,
-                error_code=res.error_code,
-                cnames=res.cnames,
-            )
-        if attempt >= retries:
-            return Result(
-                subdomain=res.subdomain,
-                ips=res.ips,
-                status=res.status,
-                elapsed_ms=res.elapsed_ms,
-                attempts=attempts,
-                retries=attempt,
-                error=res.error,
-                error_type=res.error_type,
-                error_code=res.error_code,
-                cnames=res.cnames,
-            )
+        # Always reflect retry metadata in the emitted record for observability.
+        if res.status != "error" or (not _is_retryable(res)) or attempt >= retries:
+            return replace(res, attempts=attempts, retries=attempt)
         if retry_backoff_ms:
             time.sleep((retry_backoff_ms * (2**attempt)) / 1000.0)
         attempt += 1
@@ -434,18 +398,7 @@ def _scan_core(
                                     wildcard_ipset_hit_counts.get(key, 0) + 1
                                 )
                                 if wildcard_ipset_hit_counts[key] >= wildcard_threshold:
-                                    candidate = Result(
-                                        subdomain=res.subdomain,
-                                        ips=res.ips,
-                                        status="wildcard",
-                                        elapsed_ms=res.elapsed_ms,
-                                        attempts=res.attempts,
-                                        retries=res.retries,
-                                        error=res.error,
-                                        error_type=res.error_type,
-                                        error_code=res.error_code,
-                                        takeover=res.takeover,
-                                    )
+                                    candidate = replace(res, status="wildcard")
 
                                     if wildcard_verify_http:
                                         baseline = wildcard_http_sigs_for_zone(zone)
@@ -457,18 +410,7 @@ def _scan_core(
                                             if not _http_signatures_match(baseline, candidate_sigs):
                                                 # DNS IP-set overlap can happen on CDNs; if HTTP content differs
                                                 # from a random wildcard probe, treat it as a real resolved host.
-                                                candidate = Result(
-                                                    subdomain=res.subdomain,
-                                                    ips=res.ips,
-                                                    status="resolved",
-                                                    elapsed_ms=res.elapsed_ms,
-                                                    attempts=res.attempts,
-                                                    retries=res.retries,
-                                                    error=res.error,
-                                                    error_type=res.error_type,
-                                                    error_code=res.error_code,
-                                                    takeover=res.takeover,
-                                                )
+                                                candidate = replace(candidate, status="resolved")
 
                                     res = candidate
 
@@ -480,18 +422,7 @@ def _scan_core(
                         takeover = None
                     if takeover is not None:
                         takeover_suspected += 1
-                        res = Result(
-                            subdomain=res.subdomain,
-                            ips=res.ips,
-                            status=res.status,
-                            elapsed_ms=res.elapsed_ms,
-                            attempts=res.attempts,
-                            retries=res.retries,
-                            error=res.error,
-                            error_type=res.error_type,
-                            error_code=res.error_code,
-                            takeover=takeover,
-                        )
+                        res = replace(res, takeover=takeover)
 
                 if res.status == "resolved":
                     resolved += 1
