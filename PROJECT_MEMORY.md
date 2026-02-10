@@ -4,6 +4,19 @@ Structured project memory for autonomous maintenance runs.
 
 ## Decisions
 
+### 2026-02-10 - Preserve CNAME metadata when annotating scan results
+- Decision: Keep `cnames` intact when the scanner re-labels a result as `wildcard` or attaches a `takeover` object, by using `dataclasses.replace()` instead of reconstructing partial `Result` objects.
+- Why: Reconstructing `Result` objects in the scanner dropped `cnames`, which made `--include-cname` output inconsistent (especially when `--takeover-check` or wildcard heuristics were enabled).
+- Evidence:
+  - Code: `src/subdomain_scout/scanner.py`
+  - Tests: `tests/test_scanner.py` (`test_scan_takeover_checker_preserves_cnames`)
+  - Validation: `make check`
+- Commit: `b705613`
+- Confidence: high
+- Trust label: verified-local
+- Follow-ups:
+  - Consider adding a similar regression test for the wildcard re-label path when `cnames` are present.
+
 ### 2026-02-10 - Follow CNAME chains in custom resolver mode; emit CNAME metadata
 - Decision: Custom resolver mode now follows CNAME chains when resolving A/AAAA, and `scan --include-cname` can emit observed CNAME chains (`cnames`) while classifying CNAME-only results as `status=cname`. `diff` comparisons now include `cnames` when present.
 - Why: Resolver-pinned scans previously produced false negatives for CNAME-only names (NOERROR + CNAME + no A/AAAA in the immediate answer), and missing CNAME visibility makes triage and takeover workflows harder.

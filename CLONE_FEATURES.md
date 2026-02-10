@@ -15,6 +15,11 @@
 - [ ] (P3) Add a `--quiet`/`--no-summary` mode and ensure all human output goes to stderr (stdout always machine output). [impact:2 effort:2 fit:3 diff:1 risk:1 conf:3]
 
 ## Implemented
+- [x] (2026-02-10) Preserve `cnames` metadata when scan results are re-labeled (wildcard heuristic) or annotated (takeover evidence); add a regression test.
+  - Evidence: `src/subdomain_scout/scanner.py`, `tests/test_scanner.py`
+  - Commit: `b705613`
+  - Verification:
+    - `make check` (pass; 48 tests)
 - [x] (2026-02-10) Follow CNAME chains in custom resolver mode; add `scan --include-cname`; emit `cnames` and `status=cname`; include `cnames` in `diff` comparisons.
   - Evidence: `src/subdomain_scout/dns_client.py`, `src/subdomain_scout/scanner.py`, `src/subdomain_scout/cli.py`, `src/subdomain_scout/diff.py`, `tests/test_dns_client.py`, `tests/test_cli_diff.py`, `README.md`, `CHANGELOG.md`
   - Commit: `54f3384`, `cca0145`
