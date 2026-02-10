@@ -43,6 +43,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Path to resolver list file (one IP[:port] per line; '#' comments allowed). When set, bypasses the system resolver.",
     )
     p_scan.add_argument(
+        "--include-cname",
+        action="store_true",
+        help="Include observed CNAME chain in output records and classify CNAME-only results as status=cname (requires --resolver/--resolver-file).",
+    )
+    p_scan.add_argument(
         "--resume",
         action="store_true",
         help="Resume/append mode: skip labels already present in the existing --out file and append new results.",
@@ -84,7 +89,7 @@ def main(argv: list[str] | None = None) -> int:
     p_scan.add_argument(
         "--status",
         action="append",
-        choices=["resolved", "not_found", "error", "wildcard"],
+        choices=["resolved", "not_found", "error", "wildcard", "cname"],
         help="Only write records with these statuses (repeatable)",
     )
     p_scan.add_argument(
@@ -270,6 +275,12 @@ def _run_scan(args: argparse.Namespace) -> int:
         except ValueError as e:
             print(f"error: {e}", file=sys.stderr)
             return 2
+    if args.include_cname and nameservers is None:
+        print(
+            "error: --include-cname requires --resolver/--resolver-file (custom resolver mode)",
+            file=sys.stderr,
+        )
+        return 2
 
     out_path = None if args.out == "-" else Path(args.out)
     try:
@@ -288,6 +299,7 @@ def _run_scan(args: argparse.Namespace) -> int:
                 wildcard_threshold=args.wildcard_threshold,
                 wildcard_verify_http=bool(args.wildcard_verify_http),
                 wildcard_http_timeout=float(args.wildcard_http_timeout),
+                include_cname=bool(args.include_cname),
                 progress_stream=progress_stream,
                 progress_every_s=progress_every_s,
                 only_resolved=bool(args.only_resolved),
@@ -312,6 +324,7 @@ def _run_scan(args: argparse.Namespace) -> int:
                 wildcard_threshold=args.wildcard_threshold,
                 wildcard_verify_http=bool(args.wildcard_verify_http),
                 wildcard_http_timeout=float(args.wildcard_http_timeout),
+                include_cname=bool(args.include_cname),
                 progress_stream=progress_stream,
                 progress_every_s=progress_every_s,
                 only_resolved=bool(args.only_resolved),
@@ -339,6 +352,7 @@ def _run_scan(args: argparse.Namespace) -> int:
                     "attempted": summary.attempted,
                     "resolved": summary.resolved,
                     "wildcard": summary.wildcard,
+                    "cname": summary.cname,
                     "not_found": summary.not_found,
                     "error": summary.error,
                     "wrote": summary.written,
@@ -361,6 +375,7 @@ def _run_scan(args: argparse.Namespace) -> int:
             f" attempted={summary.attempted}"
             f" resolved={summary.resolved}"
             f" wildcard={summary.wildcard}"
+            f" cname={summary.cname}"
             f" not_found={summary.not_found}"
             f" error={summary.error}"
             f" wrote={summary.written}"

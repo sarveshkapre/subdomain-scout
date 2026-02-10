@@ -139,3 +139,58 @@ def test_diff_summary_json_is_parseable(tmp_path: Path) -> None:
     assert payload["kind"] == "diff_summary"
     assert payload["schema_version"] == 1
     assert payload["added"] == 1
+
+
+def test_diff_includes_cnames_when_present(tmp_path: Path) -> None:
+    old_path = tmp_path / "old.jsonl"
+    new_path = tmp_path / "new.jsonl"
+
+    old_path.write_text(
+        json.dumps(
+            {
+                "subdomain": "a.example.com",
+                "status": "resolved",
+                "ips": ["1.1.1.1"],
+                "cnames": ["old.target.example.com"],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    new_path.write_text(
+        json.dumps(
+            {
+                "subdomain": "a.example.com",
+                "status": "resolved",
+                "ips": ["1.1.1.1"],
+                "cnames": ["new.target.example.com"],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "subdomain_scout",
+            "diff",
+            "--old",
+            str(old_path),
+            "--new",
+            str(new_path),
+            "--only",
+            "changed",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0
+    events = [json.loads(line) for line in proc.stdout.splitlines() if line.strip()]
+    assert len(events) == 1
+    assert events[0]["kind"] == "changed"
+    assert events[0]["subdomain"] == "a.example.com"
+    assert events[0]["old"]["cnames"] == ["old.target.example.com"]
+    assert events[0]["new"]["cnames"] == ["new.target.example.com"]

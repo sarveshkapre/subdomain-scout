@@ -10,6 +10,7 @@ from typing import Any, IO
 class RecordView:
     status: str
     ips: list[str]
+    cnames: list[str]
     error: str | None
 
     @classmethod
@@ -17,12 +18,16 @@ class RecordView:
         status = str(obj.get("status", ""))
         ips_raw = obj.get("ips", [])
         ips = [str(x) for x in ips_raw] if isinstance(ips_raw, list) else []
+        cnames_raw = obj.get("cnames", [])
+        cnames = [str(x) for x in cnames_raw] if isinstance(cnames_raw, list) else []
         err_raw = obj.get("error", None)
         error = None if err_raw is None else str(err_raw)
-        return cls(status=status, ips=ips, error=error)
+        return cls(status=status, ips=ips, cnames=cnames, error=error)
 
     def stable_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = {"status": self.status, "ips": self.ips}
+        if self.cnames:
+            payload["cnames"] = self.cnames
         if self.error is not None:
             payload["error"] = self.error
         return payload

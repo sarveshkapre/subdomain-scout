@@ -47,6 +47,8 @@ def test_load_nameservers_file_errors_on_empty(tmp_path: Path) -> None:
 
 class _DnsHandler(socketserver.BaseRequestHandler):
     A_RDATA: Final[bytes] = b"\x01\x02\x03\x04"  # 1.2.3.4
+    CNAME_TO_A: Final[bytes] = b"\x01a\x03res\x04test\x00"  # a.res.test
+    CNAME_TO_MISSING: Final[bytes] = b"\x07missing\x03res\x04test\x00"  # missing.res.test
 
     def handle(self) -> None:
         data, sock = self.request
@@ -85,6 +87,35 @@ class _DnsHandler(socketserver.BaseRequestHandler):
             # NOERROR, empty AAAA
             hdr = struct.pack("!HHHHHH", rid, 0x8180, 1, 0, 0, 0)
             sock.sendto(hdr + question, self.client_address)
+            return
+
+        if qname == "b.res.test" and qtype in {1, 28}:
+            # Return only a CNAME (no A/AAAA); client should follow to a.res.test.
+            hdr = struct.pack("!HHHHHH", rid, 0x8180, 1, 1, 0, 0)
+            ans = (
+                b"\xc0\x0c"
+                + struct.pack("!H", 5)  # TYPE CNAME
+                + struct.pack("!H", 1)  # CLASS IN
+                + struct.pack("!I", 60)  # TTL
+                + struct.pack("!H", len(self.CNAME_TO_A))
+                + self.CNAME_TO_A
+            )
+            sock.sendto(hdr + question + ans, self.client_address)
+            return
+
+        if qname == "d.res.test" and qtype in {1, 28}:
+            # CNAME-only response that points to a missing name; should be surfaced as status=cname
+            # when --include-cname is enabled.
+            hdr = struct.pack("!HHHHHH", rid, 0x8180, 1, 1, 0, 0)
+            ans = (
+                b"\xc0\x0c"
+                + struct.pack("!H", 5)  # TYPE CNAME
+                + struct.pack("!H", 1)  # CLASS IN
+                + struct.pack("!I", 60)  # TTL
+                + struct.pack("!H", len(self.CNAME_TO_MISSING))
+                + self.CNAME_TO_MISSING
+            )
+            sock.sendto(hdr + question + ans, self.client_address)
             return
 
         # NXDOMAIN for everything else.
@@ -165,6 +196,163 @@ def test_cli_scan_with_custom_resolver(tmp_path: Path, dns_server: tuple[str, in
     summary = json.loads(proc.stderr.strip())
     assert summary["attempted"] == 1
     assert summary["resolved"] == 1
+
+
+def test_cli_scan_with_custom_resolver_follows_cname(
+    tmp_path: Path, dns_server: tuple[str, int]
+) -> None:
+    host, port = dns_server
+    wordlist = tmp_path / "words.txt"
+    wordlist.write_text("b\n", encoding="utf-8")
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "subdomain_scout",
+            "scan",
+            "--domain",
+            "res.test",
+            "--wordlist",
+            str(wordlist),
+            "--out",
+            "-",
+            "--only-resolved",
+            "--resolver",
+            f"{host}:{port}",
+            "--timeout",
+            "0.2",
+            "--concurrency",
+            "1",
+            "--summary-json",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0
+    record = json.loads(proc.stdout.strip())
+    assert record["subdomain"] == "b.res.test"
+    assert record["status"] == "resolved"
+    assert record["ips"] == ["1.2.3.4"]
+
+
+def test_cli_scan_include_cname_emits_chain(tmp_path: Path, dns_server: tuple[str, int]) -> None:
+    host, port = dns_server
+    wordlist = tmp_path / "words.txt"
+    wordlist.write_text("b\n", encoding="utf-8")
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "subdomain_scout",
+            "scan",
+            "--domain",
+            "res.test",
+            "--wordlist",
+            str(wordlist),
+            "--out",
+            "-",
+            "--only-resolved",
+            "--include-cname",
+            "--resolver",
+            f"{host}:{port}",
+            "--timeout",
+            "0.2",
+            "--concurrency",
+            "1",
+            "--summary-json",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0
+    record = json.loads(proc.stdout.strip())
+    assert record["subdomain"] == "b.res.test"
+    assert record["status"] == "resolved"
+    assert record["ips"] == ["1.2.3.4"]
+    assert record["cnames"] == ["a.res.test"]
+    summary = json.loads(proc.stderr.strip())
+    assert summary["attempted"] == 1
+    assert summary["resolved"] == 1
+    assert summary["cname"] == 0
+
+
+def test_cli_scan_include_cname_classifies_cname_only(
+    tmp_path: Path, dns_server: tuple[str, int]
+) -> None:
+    host, port = dns_server
+    wordlist = tmp_path / "words.txt"
+    wordlist.write_text("d\n", encoding="utf-8")
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "subdomain_scout",
+            "scan",
+            "--domain",
+            "res.test",
+            "--wordlist",
+            str(wordlist),
+            "--out",
+            "-",
+            "--status",
+            "cname",
+            "--include-cname",
+            "--resolver",
+            f"{host}:{port}",
+            "--timeout",
+            "0.2",
+            "--concurrency",
+            "1",
+            "--summary-json",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0
+    record = json.loads(proc.stdout.strip())
+    assert record["subdomain"] == "d.res.test"
+    assert record["status"] == "cname"
+    assert record["ips"] == []
+    assert record["cnames"] == ["missing.res.test"]
+    summary = json.loads(proc.stderr.strip())
+    assert summary["attempted"] == 1
+    assert summary["cname"] == 1
+
+
+def test_cli_scan_include_cname_requires_resolver(tmp_path: Path) -> None:
+    wordlist = tmp_path / "words.txt"
+    wordlist.write_text("www\n", encoding="utf-8")
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "subdomain_scout",
+            "scan",
+            "--domain",
+            "invalid.test",
+            "--wordlist",
+            str(wordlist),
+            "--out",
+            "-",
+            "--include-cname",
+            "--timeout",
+            "0.1",
+            "--concurrency",
+            "1",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 2
+    assert "requires --resolver/--resolver-file" in proc.stderr
 
 
 def test_cli_scan_with_resolver_file(tmp_path: Path, dns_server: tuple[str, int]) -> None:

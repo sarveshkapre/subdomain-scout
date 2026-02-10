@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator, TextIO
 
-from .dns_client import DnsQueryError, resolve_ips
+from .dns_client import DnsQueryError, resolve_host
 from .validation import normalize_label
 
 
@@ -31,6 +31,7 @@ class Result:
     error: str | None = None
     error_type: str | None = None
     error_code: int | None = None
+    cnames: list[str] | None = None
     takeover: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -48,23 +49,45 @@ class Result:
             payload["error_type"] = self.error_type
         if self.error_code is not None:
             payload["error_code"] = self.error_code
+        if self.cnames is not None:
+            payload["cnames"] = self.cnames
         if self.takeover is not None:
             payload["takeover"] = self.takeover
         return payload
 
 
-def _resolve(name: str, *, timeout: float, nameservers: list[tuple[str, int]] | None) -> Result:
+def _resolve(
+    name: str,
+    *,
+    timeout: float,
+    nameservers: list[tuple[str, int]] | None,
+    include_cname: bool,
+) -> Result:
     start = time.time()
     try:
         if nameservers is None:
             infos = socket.getaddrinfo(name, None)
             ips = [info[4][0] for info in infos]
             ips = list(dict.fromkeys(ips))
+            return Result(subdomain=name, ips=ips, status="resolved", elapsed_ms=_ms(start))
         else:
-            ips = resolve_ips(name, nameservers=nameservers, timeout=timeout)
+            ips, cnames = resolve_host(name, nameservers=nameservers, timeout=timeout)
             if not ips:
-                return Result(subdomain=name, ips=[], status="not_found", elapsed_ms=_ms(start))
-        return Result(subdomain=name, ips=ips, status="resolved", elapsed_ms=_ms(start))
+                status = "cname" if include_cname and cnames else "not_found"
+                return Result(
+                    subdomain=name,
+                    ips=[],
+                    status=status,
+                    elapsed_ms=_ms(start),
+                    cnames=cnames if include_cname and cnames else None,
+                )
+            return Result(
+                subdomain=name,
+                ips=ips,
+                status="resolved",
+                elapsed_ms=_ms(start),
+                cnames=cnames if include_cname and cnames else None,
+            )
     except socket.gaierror as e:
         not_found_errnos = {
             errno
@@ -132,6 +155,7 @@ def _resolve_with_retries(
     *,
     timeout: float,
     nameservers: list[tuple[str, int]] | None,
+    include_cname: bool,
     retries: int,
     retry_backoff_ms: int,
 ) -> Result:
@@ -142,7 +166,12 @@ def _resolve_with_retries(
 
     attempt = 0
     while True:
-        res = _resolve(name, timeout=timeout, nameservers=nameservers)
+        res = _resolve(
+            name,
+            timeout=timeout,
+            nameservers=nameservers,
+            include_cname=include_cname,
+        )
         attempts = attempt + 1
         if res.status != "error":
             return Result(
@@ -155,6 +184,7 @@ def _resolve_with_retries(
                 error=res.error,
                 error_type=res.error_type,
                 error_code=res.error_code,
+                cnames=res.cnames,
             )
         if not _is_retryable(res):
             return Result(
@@ -167,6 +197,7 @@ def _resolve_with_retries(
                 error=res.error,
                 error_type=res.error_type,
                 error_code=res.error_code,
+                cnames=res.cnames,
             )
         if attempt >= retries:
             return Result(
@@ -179,6 +210,7 @@ def _resolve_with_retries(
                 error=res.error,
                 error_type=res.error_type,
                 error_code=res.error_code,
+                cnames=res.cnames,
             )
         if retry_backoff_ms:
             time.sleep((retry_backoff_ms * (2**attempt)) / 1000.0)
@@ -195,6 +227,7 @@ class ScanSummary:
     written: int
     resolved: int
     wildcard: int
+    cname: int
     not_found: int
     error: int
     labels_total: int
@@ -263,6 +296,7 @@ def _scan_core(
     wildcard_threshold: int,
     wildcard_verify_http: bool,
     wildcard_http_timeout: float,
+    include_cname: bool,
     progress_stream: TextIO | None,
     progress_every_s: float,
     retries: int,
@@ -293,6 +327,7 @@ def _scan_core(
     written = 0
     resolved = 0
     wildcard = 0
+    cname = 0
     not_found = 0
     error = 0
     labels_total = 0
@@ -302,7 +337,7 @@ def _scan_core(
     takeover_checked = 0
     takeover_suspected = 0
 
-    allowed_statuses = {"resolved", "wildcard", "not_found", "error"}
+    allowed_statuses = {"resolved", "wildcard", "cname", "not_found", "error"}
     if statuses is not None:
         unknown = statuses - allowed_statuses
         if unknown:
@@ -346,6 +381,7 @@ def _scan_core(
                 name,
                 timeout=timeout,
                 nameservers=nameservers,
+                include_cname=include_cname,
                 retries=retries,
                 retry_backoff_ms=retry_backoff_ms,
             )
@@ -461,6 +497,8 @@ def _scan_core(
                     resolved += 1
                 elif res.status == "wildcard":
                     wildcard += 1
+                elif res.status == "cname":
+                    cname += 1
                 elif res.status == "not_found":
                     not_found += 1
                 else:
@@ -478,6 +516,7 @@ def _scan_core(
                             f" attempted={attempted}"
                             f" resolved={resolved}"
                             f" wildcard={wildcard}"
+                            f" cname={cname}"
                             f" not_found={not_found}"
                             f" error={error}"
                             f" wrote={wrote_now}"
@@ -499,6 +538,7 @@ def _scan_core(
         written=written,
         resolved=resolved,
         wildcard=wildcard,
+        cname=cname,
         not_found=not_found,
         error=error,
         labels_total=labels_total,
@@ -526,6 +566,7 @@ def scan_domains_summary(
     wildcard_threshold: int = 1,
     wildcard_verify_http: bool = False,
     wildcard_http_timeout: float = 3.0,
+    include_cname: bool = False,
     progress_stream: TextIO | None = None,
     progress_every_s: float = 2.0,
     retries: int = 0,
@@ -540,6 +581,8 @@ def scan_domains_summary(
         raise ValueError("only_resolved and statuses cannot both be set")
     if only_resolved:
         statuses = {"resolved"}
+    if include_cname and nameservers is None:
+        raise ValueError("include_cname requires custom resolver mode (--resolver/--resolver-file)")
     labels = _iter_labels(wordlist)
     if extra_labels:
         labels = itertools.chain(labels, extra_labels)
@@ -556,6 +599,7 @@ def scan_domains_summary(
         wildcard_threshold=wildcard_threshold,
         wildcard_verify_http=wildcard_verify_http,
         wildcard_http_timeout=wildcard_http_timeout,
+        include_cname=include_cname,
         progress_stream=progress_stream,
         progress_every_s=progress_every_s,
         retries=retries,
@@ -582,6 +626,7 @@ def scan_domains_summary_lines(
     wildcard_threshold: int = 1,
     wildcard_verify_http: bool = False,
     wildcard_http_timeout: float = 3.0,
+    include_cname: bool = False,
     progress_stream: TextIO | None = None,
     progress_every_s: float = 2.0,
     retries: int = 0,
@@ -596,6 +641,8 @@ def scan_domains_summary_lines(
         raise ValueError("only_resolved and statuses cannot both be set")
     if only_resolved:
         statuses = {"resolved"}
+    if include_cname and nameservers is None:
+        raise ValueError("include_cname requires custom resolver mode (--resolver/--resolver-file)")
     labels = _iter_labels_lines(wordlist_lines)
     if extra_labels:
         labels = itertools.chain(labels, extra_labels)
@@ -612,6 +659,7 @@ def scan_domains_summary_lines(
         wildcard_threshold=wildcard_threshold,
         wildcard_verify_http=wildcard_verify_http,
         wildcard_http_timeout=wildcard_http_timeout,
+        include_cname=include_cname,
         progress_stream=progress_stream,
         progress_every_s=progress_every_s,
         retries=retries,
@@ -651,7 +699,12 @@ def _detect_wildcard_ipsets(
     hits: dict[frozenset[str], int] = {}
     for _ in range(probes):
         label = f"_sdscout-{secrets.token_hex(8)}"
-        res = _resolve(f"{label}.{zone}", timeout=timeout, nameservers=nameservers)
+        res = _resolve(
+            f"{label}.{zone}",
+            timeout=timeout,
+            nameservers=nameservers,
+            include_cname=False,
+        )
         if res.status != "resolved" or not res.ips:
             continue
         ipset = frozenset(res.ips)

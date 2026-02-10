@@ -106,30 +106,68 @@ def resolve_ips(
     nameservers: Sequence[tuple[str, int]],
     timeout: float,
 ) -> list[str]:
+    ips, _cnames = resolve_host(name, nameservers=nameservers, timeout=timeout)
+    return ips
+
+
+def resolve_host(
+    name: str,
+    *,
+    nameservers: Sequence[tuple[str, int]],
+    timeout: float,
+    max_cname_depth: int = 8,
+) -> tuple[list[str], list[str]]:
     if timeout <= 0:
         raise ValueError("timeout must be > 0")
     if not nameservers:
         raise ValueError("nameservers must be non-empty")
+    if max_cname_depth < 0:
+        raise ValueError("max_cname_depth must be >= 0")
 
     ips: list[str] = []
     seen: set[str] = set()
+    cnames_chain: list[str] = []
 
-    # Query both A and AAAA for parity with getaddrinfo(). We treat NXDOMAIN/NODATA
-    # as "no results" and let the caller decide the final status.
-    for qtype in (1, 28):  # A, AAAA
-        items = _query_rrset(
-            name,
-            qtype=qtype,
-            nameservers=nameservers,
-            timeout=timeout,
-        )
-        for ip in items:
-            if ip in seen:
-                continue
-            seen.add(ip)
-            ips.append(ip)
+    # Query both A and AAAA for parity with getaddrinfo(). If we get a CNAME-only
+    # response, follow the chain up to `max_cname_depth`.
+    current = str(name).strip().strip(".").lower()
+    seen_names: set[str] = {current}
 
-    return ips
+    for _ in range(max_cname_depth + 1):
+        observed_cnames: list[str] = []
+
+        for qtype in (1, 28):  # A, AAAA
+            resp = _query(
+                current,
+                qtype=qtype,
+                nameservers=nameservers,
+                timeout=timeout,
+            )
+            for cname in resp.cnames:
+                if cname in observed_cnames:
+                    continue
+                observed_cnames.append(cname)
+            for ip in resp.answers:
+                if ip in seen:
+                    continue
+                seen.add(ip)
+                ips.append(ip)
+
+        if ips:
+            return ips, cnames_chain
+
+        if not observed_cnames:
+            return [], cnames_chain
+
+        # Follow the first observed CNAME deterministically; record the chain for debugging/triage.
+        nxt = observed_cnames[0].strip().strip(".").lower()
+        if not nxt or nxt in seen_names:
+            return [], cnames_chain
+        cnames_chain.append(nxt)
+        seen_names.add(nxt)
+        current = nxt
+
+    return [], cnames_chain
 
 
 def _query_rrset(
@@ -139,6 +177,16 @@ def _query_rrset(
     nameservers: Sequence[tuple[str, int]],
     timeout: float,
 ) -> list[str]:
+    return _query(name, qtype=qtype, nameservers=nameservers, timeout=timeout).answers
+
+
+def _query(
+    name: str,
+    *,
+    qtype: int,
+    nameservers: Sequence[tuple[str, int]],
+    timeout: float,
+) -> _DnsParsed:
     last_err: BaseException | None = None
     for host, port in nameservers:
         try:
@@ -160,7 +208,7 @@ def _query_rrset(
                     timeout=timeout,
                 )
             if resp.rcode in {0, 3}:
-                return resp.answers
+                return resp
             raise DnsQueryError("dns error response", rcode=resp.rcode)
         except (TimeoutError, OSError, ValueError, DnsQueryError) as e:
             last_err = e
@@ -180,6 +228,7 @@ class _DnsParsed:
     rcode: int
     truncated: bool
     answers: list[str]
+    cnames: list[str]
 
 
 def _udp_query(
@@ -277,6 +326,7 @@ def _parse_response(data: bytes, *, tid: int, qtype: int) -> _DnsParsed:
             raise ValueError("malformed dns question section")
 
     answers: list[str] = []
+    cnames: list[str] = []
     for _ in range(an):
         offset = _skip_name(data, offset)
         if offset + 10 > len(data):
@@ -285,11 +335,20 @@ def _parse_response(data: bytes, *, tid: int, qtype: int) -> _DnsParsed:
         offset += 10
         if offset + rdlen > len(data):
             raise ValueError("malformed dns rdata")
-        rdata = data[offset : offset + rdlen]
+        rdata_offset = offset
+        rdata = data[rdata_offset : rdata_offset + rdlen]
         offset += rdlen
 
         if rclass != 1:
             continue
+        if rtype == 5:
+            # CNAME target is a compressed DNS name.
+            target, _ = _decode_name(data, rdata_offset)
+            target = target.strip(".").lower()
+            if target:
+                cnames.append(target)
+            continue
+
         if rtype != qtype:
             continue
         if rtype == 1 and rdlen == 4:
@@ -297,7 +356,45 @@ def _parse_response(data: bytes, *, tid: int, qtype: int) -> _DnsParsed:
         elif rtype == 28 and rdlen == 16:
             answers.append(socket.inet_ntop(socket.AF_INET6, rdata))
 
-    return _DnsParsed(rcode=rcode, truncated=truncated, answers=answers)
+    return _DnsParsed(rcode=rcode, truncated=truncated, answers=answers, cnames=cnames)
+
+
+def _decode_name(msg: bytes, offset: int) -> tuple[str, int]:
+    """
+    Decode a possibly-compressed DNS name at `offset`.
+
+    Returns (name, next_offset) where next_offset is where parsing should
+    continue in the original message (i.e., after following any compression
+    pointers).
+    """
+    labels: list[str] = []
+    pos = offset
+    end_offset: int | None = None
+
+    for _ in range(256):  # hard stop on loops
+        if pos >= len(msg):
+            raise ValueError("name exceeds message length")
+        length = msg[pos]
+        if length == 0:
+            pos += 1
+            return ".".join(labels), (end_offset if end_offset is not None else pos)
+        if (length & 0xC0) == 0xC0:
+            if pos + 1 >= len(msg):
+                raise ValueError("truncated compression pointer")
+            ptr = ((length & 0x3F) << 8) | msg[pos + 1]
+            if end_offset is None:
+                end_offset = pos + 2
+            pos = ptr
+            continue
+        if (length & 0xC0) != 0:
+            raise ValueError("invalid label length (reserved bits set)")
+        pos += 1
+        if pos + length > len(msg):
+            raise ValueError("truncated label")
+        labels.append(msg[pos : pos + length].decode("utf-8", errors="strict"))
+        pos += length
+
+    raise ValueError("name compression loop detected")
 
 
 def _skip_name(msg: bytes, offset: int) -> int:
@@ -316,4 +413,4 @@ def _skip_name(msg: bytes, offset: int) -> int:
     raise ValueError("name compression loop detected")
 
 
-__all__ = ["DnsQueryError", "parse_nameserver", "resolve_ips"]
+__all__ = ["DnsQueryError", "parse_nameserver", "resolve_host", "resolve_ips"]

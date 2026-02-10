@@ -6,6 +6,8 @@
 - Support writing NDJSON to stdout via `--out -`.
 - Add `diff` command to compare two JSONL/NDJSON runs (`subdomain-scout diff`).
 - Add best-effort wildcard DNS detection (`--detect-wildcard`) and mark matching records as `status=wildcard`.
+- Follow CNAME chains in custom resolver mode for fewer false negatives on CNAME-only names.
+- Add `scan --include-cname` (requires `--resolver`/`--resolver-file`) to emit observed CNAME chains and classify CNAME-only results as `status=cname`.
 - Improve wildcard detection for multi-level labels by probing per-suffix wildcards (e.g. `*.dev.example.com`).
 - Reduce wildcard false positives on CDN-backed domains via `--wildcard-threshold` and optional HTTP verification (`--wildcard-verify-http`).
 - Add flexible scan output filtering via `--status` and retry on transient DNS errors (`--retries`).
