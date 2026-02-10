@@ -18,4 +18,4 @@
 ## Next
 
 - Expand takeover fingerprint coverage with false-positive guardrails.
-- Add optional DNS record enrichment (CNAME) for better triage and debugging.
+- Expand DNS record enrichment beyond CNAME chain visibility (e.g., canonical target, TTLs, and record types) for better triage and debugging.
