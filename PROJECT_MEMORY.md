@@ -4,6 +4,21 @@ Structured project memory for autonomous maintenance runs.
 
 ## Decisions
 
+### 2026-02-10 - Follow CNAME chains in custom resolver mode; emit CNAME metadata
+- Decision: Custom resolver mode now follows CNAME chains when resolving A/AAAA, and `scan --include-cname` can emit observed CNAME chains (`cnames`) while classifying CNAME-only results as `status=cname`. `diff` comparisons now include `cnames` when present.
+- Why: Resolver-pinned scans previously produced false negatives for CNAME-only names (NOERROR + CNAME + no A/AAAA in the immediate answer), and missing CNAME visibility makes triage and takeover workflows harder.
+- Evidence:
+  - Code: `src/subdomain_scout/dns_client.py`, `src/subdomain_scout/scanner.py`, `src/subdomain_scout/cli.py`, `src/subdomain_scout/diff.py`
+  - Tests: `tests/test_dns_client.py`, `tests/test_cli_diff.py`
+  - Docs: `README.md`, `CHANGELOG.md`
+  - Validation: `make check`; CLI smoke commands (see Verification Evidence)
+  - CI: `https://github.com/sarveshkapre/subdomain-scout/actions/runs/21856831792`
+- Commit: `54f3384`, `cca0145`
+- Confidence: high
+- Trust label: verified-local-and-ci
+- Follow-ups:
+  - Consider optional inclusion of the final canonical target hostname (when CNAME present) in addition to the chain for easier triage.
+
 ### 2026-02-09 - Reduce wildcard false positives with thresholding and HTTP verification
 - Decision: Added `scan --detect-wildcard` refinements for CDN-backed domains via `--wildcard-threshold` and optional HTTP signature verification (`--wildcard-verify-http` / `--wildcard-http-timeout`).
 - Why: Wildcard zones on CDNs can overlap IPs with real hosts, creating noisy `status=wildcard` false positives; HTTP comparison against a random wildcard probe is a pragmatic, dependency-free discriminator.
@@ -112,6 +127,11 @@ Structured project memory for autonomous maintenance runs.
 - Trust label: verified-local
 
 ## Verification Evidence
+
+- `make check` (pass; 47 tests)
+- `printf "www\n" | .venv/bin/python -m subdomain_scout scan --domain example.com --wordlist - --out - --only-resolved --concurrency 1 --timeout 2 --summary-json` (pass)
+- `printf "www\n" | .venv/bin/python -m subdomain_scout scan --domain example.com --wordlist - --out - --only-resolved --resolver 1.1.1.1 --include-cname --concurrency 1 --timeout 2 --summary-json` (pass)
+- `tmpdir=$(mktemp -d) && printf '{"subdomain":"a.example.com","status":"resolved","ips":["1.1.1.1"],"cnames":["old.example.com"]}'"\\n" > "$tmpdir/old.jsonl" && printf '{"subdomain":"a.example.com","status":"resolved","ips":["1.1.1.1"],"cnames":["new.example.com"]}'"\\n" > "$tmpdir/new.jsonl" && .venv/bin/python -m subdomain_scout diff --old "$tmpdir/old.jsonl" --new "$tmpdir/new.jsonl" --only changed && rm -rf "$tmpdir"` (pass)
 
 - `make check` (pass; 42 tests)
 - `printf "www\n" | .venv/bin/python -m subdomain_scout scan --domain invalid.test --wordlist - --out - --progress --progress-every 0 --timeout 0.1 --concurrency 1` (pass; includes `progress attempted=1` and `scanned attempted=1`)

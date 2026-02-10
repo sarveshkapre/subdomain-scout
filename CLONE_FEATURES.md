@@ -7,13 +7,6 @@
 - Gaps found during codebase exploration
 
 ## Candidate Features To Do
-### Selected (Cycle 1 - 2026-02-10)
-- [ ] (P0) Fix CI failure: `ruff format --check` mismatch on `main`; run formatter and ensure `make check` passes. [impact:5 effort:1 fit:5 diff:1 risk:1 conf:5]
-- [ ] (P1) Fix custom resolver mode false negatives by following CNAME chains when resolving A/AAAA. [impact:4 effort:2 fit:4 diff:2 risk:2 conf:4]
-- [ ] (P1) Add `scan --include-cname` (requires `--resolver`/`--resolver-file`) to emit observed CNAME chain and classify CNAME-only results as `status=cname`. [impact:4 effort:3 fit:4 diff:2 risk:2 conf:3]
-- [ ] (P2) Include `cnames` in `diff` comparisons when present to surface alias drift. [impact:3 effort:2 fit:3 diff:1 risk:1 conf:4]
-
-### Backlog
 - [ ] (P2) Expand built-in takeover fingerprints and add false-positive guard tests per provider. [impact:3 effort:3 fit:4 diff:3 risk:2 conf:3]
 - [ ] (P3) Add a benchmark fixture for large wordlists to track scan throughput regressions. [impact:2 effort:3 fit:3 diff:1 risk:1 conf:3]
 - [ ] (P3) Add release automation for semantic version bump + changelog cut. [impact:2 effort:3 fit:3 diff:1 risk:2 conf:3]
@@ -22,6 +15,19 @@
 - [ ] (P3) Add a `--quiet`/`--no-summary` mode and ensure all human output goes to stderr (stdout always machine output). [impact:2 effort:2 fit:3 diff:1 risk:1 conf:3]
 
 ## Implemented
+- [x] (2026-02-10) Follow CNAME chains in custom resolver mode; add `scan --include-cname`; emit `cnames` and `status=cname`; include `cnames` in `diff` comparisons.
+  - Evidence: `src/subdomain_scout/dns_client.py`, `src/subdomain_scout/scanner.py`, `src/subdomain_scout/cli.py`, `src/subdomain_scout/diff.py`, `tests/test_dns_client.py`, `tests/test_cli_diff.py`, `README.md`, `CHANGELOG.md`
+  - Commit: `54f3384`, `cca0145`
+  - Verification:
+    - `make check` (pass; 47 tests)
+    - `printf "www\n" | .venv/bin/python -m subdomain_scout scan --domain example.com --wordlist - --out - --only-resolved --concurrency 1 --timeout 2 --summary-json` (pass)
+    - `printf "www\n" | .venv/bin/python -m subdomain_scout scan --domain example.com --wordlist - --out - --only-resolved --resolver 1.1.1.1 --include-cname --concurrency 1 --timeout 2 --summary-json` (pass)
+    - `tmpdir=$(mktemp -d) && printf '{"subdomain":"a.example.com","status":"resolved","ips":["1.1.1.1"],"cnames":["old.example.com"]}'"\n" > "$tmpdir/old.jsonl" && printf '{"subdomain":"a.example.com","status":"resolved","ips":["1.1.1.1"],"cnames":["new.example.com"]}'"\n" > "$tmpdir/new.jsonl" && .venv/bin/python -m subdomain_scout diff --old "$tmpdir/old.jsonl" --new "$tmpdir/new.jsonl" --only changed && rm -rf "$tmpdir"` (pass)
+  - CI: `21856831792` (success); `21856888748` (queued)
+- [x] (2026-02-10) Fix CI failure signal: confirmed canonical gate (`make check`) passes and pushed a mainline commit with green CI.
+  - Evidence: `CLONE_FEATURES.md`
+  - Commit: `92cf74c`
+  - CI: `21856628676` (success)
 - [x] (2026-02-09) Reduce wildcard false positives on CDN-backed domains via `--wildcard-threshold` and optional HTTP verification (`--wildcard-verify-http`).
   - Evidence: `src/subdomain_scout/scanner.py`, `src/subdomain_scout/cli.py`, `tests/test_wildcard.py`, `README.md`, `PROJECT.md`, `CHANGELOG.md`
   - Commit: `f8c6eff`
@@ -111,6 +117,7 @@ printf 'www\n' | .venv/bin/python -m subdomain_scout scan --domain example.com -
 - Market scan notes (untrusted):
   - Resolver lists and resume are baseline UX (e.g., ProjectDiscovery `dnsx` has `-r` resolver list input and `-resume`). Sources: https://docs.projectdiscovery.io/opensource/dnsx/usage and https://github.com/projectdiscovery/dnsx
   - Wildcard handling often uses threshold-style heuristics (e.g., `dnsx` has `-wildcard-threshold`, default 5). Source: https://docs.projectdiscovery.io/opensource/dnsx/usage
+  - CNAME visibility is baseline in toolchains (e.g., `dnsx` supports `-cname` queries and response display flags like `-resp`). Source: https://docs.projectdiscovery.io/opensource/dnsx/usage
   - Tools like `puredns` emphasize wildcard filtering as a core feature and use resolver list files by default. Source: https://github.com/d3mondev/puredns
   - Tools like `shuffledns` describe "smart wildcard elimination" using a per-IP thresholding heuristic. Source: https://github.com/projectdiscovery/shuffledns
   - Amass exposes resolver configuration for controlling DNS behavior across runs. Source: https://github.com/OWASP/Amass/wiki/The-Configuration-File
