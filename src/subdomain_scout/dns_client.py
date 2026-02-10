@@ -153,17 +153,20 @@ def resolve_host(
                 seen.add(ip)
                 ips.append(ip)
 
+        primary_cname = observed_cnames[0].strip().strip(".").lower() if observed_cnames else ""
+        if primary_cname and (not cnames_chain or cnames_chain[-1] != primary_cname):
+            cnames_chain.append(primary_cname)
+
         if ips:
             return ips, cnames_chain
 
-        if not observed_cnames:
+        if not primary_cname:
             return [], cnames_chain
 
         # Follow the first observed CNAME deterministically; record the chain for debugging/triage.
-        nxt = observed_cnames[0].strip().strip(".").lower()
-        if not nxt or nxt in seen_names:
+        nxt = primary_cname
+        if nxt in seen_names:
             return [], cnames_chain
-        cnames_chain.append(nxt)
         seen_names.add(nxt)
         current = nxt
 
