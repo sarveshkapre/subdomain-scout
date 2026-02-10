@@ -23,7 +23,7 @@
     - `printf "www\n" | .venv/bin/python -m subdomain_scout scan --domain example.com --wordlist - --out - --only-resolved --concurrency 1 --timeout 2 --summary-json` (pass)
     - `printf "www\n" | .venv/bin/python -m subdomain_scout scan --domain example.com --wordlist - --out - --only-resolved --resolver 1.1.1.1 --include-cname --concurrency 1 --timeout 2 --summary-json` (pass)
     - `tmpdir=$(mktemp -d) && printf '{"subdomain":"a.example.com","status":"resolved","ips":["1.1.1.1"],"cnames":["old.example.com"]}'"\n" > "$tmpdir/old.jsonl" && printf '{"subdomain":"a.example.com","status":"resolved","ips":["1.1.1.1"],"cnames":["new.example.com"]}'"\n" > "$tmpdir/new.jsonl" && .venv/bin/python -m subdomain_scout diff --old "$tmpdir/old.jsonl" --new "$tmpdir/new.jsonl" --only changed && rm -rf "$tmpdir"` (pass)
-  - CI: `21856831792` (success); `21856888748` (queued)
+  - CI: `21856831792` (success); `21856888748` (success)
 - [x] (2026-02-10) Fix CI failure signal: confirmed canonical gate (`make check`) passes and pushed a mainline commit with green CI.
   - Evidence: `CLONE_FEATURES.md`
   - Commit: `92cf74c`
