@@ -7,9 +7,13 @@
 - Gaps found during codebase exploration
 
 ## Candidate Features To Do
+### Selected (Cycle 1 - 2026-02-10)
+- [ ] (P0) Fix CI failure: `ruff format --check` mismatch on `main`; run formatter and ensure `make check` passes. [impact:5 effort:1 fit:5 diff:1 risk:1 conf:5]
 - [ ] (P1) Fix custom resolver mode false negatives by following CNAME chains when resolving A/AAAA. [impact:4 effort:2 fit:4 diff:2 risk:2 conf:4]
 - [ ] (P1) Add `scan --include-cname` (requires `--resolver`/`--resolver-file`) to emit observed CNAME chain and classify CNAME-only results as `status=cname`. [impact:4 effort:3 fit:4 diff:2 risk:2 conf:3]
 - [ ] (P2) Include `cnames` in `diff` comparisons when present to surface alias drift. [impact:3 effort:2 fit:3 diff:1 risk:1 conf:4]
+
+### Backlog
 - [ ] (P2) Expand built-in takeover fingerprints and add false-positive guard tests per provider. [impact:3 effort:3 fit:4 diff:3 risk:2 conf:3]
 - [ ] (P3) Add a benchmark fixture for large wordlists to track scan throughput regressions. [impact:2 effort:3 fit:3 diff:1 risk:1 conf:3]
 - [ ] (P3) Add release automation for semantic version bump + changelog cut. [impact:2 effort:3 fit:3 diff:1 risk:2 conf:3]
