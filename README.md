@@ -43,6 +43,11 @@ Each output line is a JSON object:
 
 When `--include-cname` is enabled (requires custom resolver mode), records may include a `cnames` array (CNAME chain targets), and CNAME-only results are emitted as `status=cname`.
 
+When custom resolver mode is enabled (`--resolver` / `--resolver-file`), records may also include DNS enrichment fields:
+- `canonical_target`: final CNAME target when a chain is observed.
+- `dns_record_types`: DNS record types observed while resolving (for example `["A", "CNAME"]`).
+- `ttl_min` / `ttl_max`: minimum and maximum TTL values seen across resolved A/AAAA answers.
+
 When `--takeover-check` is enabled and a fingerprint matches, records include a `takeover` object with `service`, `confidence`, `score`, and fingerprint evidence metadata.
 
 Custom takeover catalogs are JSON files shaped like:

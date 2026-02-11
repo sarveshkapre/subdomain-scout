@@ -12,7 +12,7 @@ from typing import Final, Iterator
 
 import pytest
 
-from subdomain_scout.dns_client import load_nameservers_file, parse_nameserver
+from subdomain_scout.dns_client import load_nameservers_file, parse_nameserver, resolve_host_details
 
 
 def test_parse_nameserver_ipv4_and_port() -> None:
@@ -158,6 +158,18 @@ def dns_server() -> Iterator[tuple[str, int]]:
         t.join(timeout=1)
 
 
+def test_resolve_host_details_includes_record_metadata(dns_server: tuple[str, int]) -> None:
+    host, port = dns_server
+    details = resolve_host_details("b.res.test", nameservers=[(host, port)], timeout=0.2)
+
+    assert details.ips == ["1.2.3.4"]
+    assert details.cnames == ["a.res.test"]
+    assert details.record_types == ["A", "CNAME"]
+    assert details.ttl_min == 60
+    assert details.ttl_max == 60
+    assert details.canonical_target == "a.res.test"
+
+
 def test_cli_scan_with_custom_resolver(tmp_path: Path, dns_server: tuple[str, int]) -> None:
     host, port = dns_server
     wordlist = tmp_path / "words.txt"
@@ -193,6 +205,10 @@ def test_cli_scan_with_custom_resolver(tmp_path: Path, dns_server: tuple[str, in
     assert record["subdomain"] == "a.res.test"
     assert record["status"] == "resolved"
     assert record["ips"] == ["1.2.3.4"]
+    assert record["dns_record_types"] == ["A"]
+    assert record["ttl_min"] == 60
+    assert record["ttl_max"] == 60
+    assert "canonical_target" not in record
     summary = json.loads(proc.stderr.strip())
     assert summary["attempted"] == 1
     assert summary["resolved"] == 1
@@ -235,6 +251,10 @@ def test_cli_scan_with_custom_resolver_follows_cname(
     assert record["subdomain"] == "b.res.test"
     assert record["status"] == "resolved"
     assert record["ips"] == ["1.2.3.4"]
+    assert record["dns_record_types"] == ["A", "CNAME"]
+    assert record["ttl_min"] == 60
+    assert record["ttl_max"] == 60
+    assert record["canonical_target"] == "a.res.test"
 
 
 def test_cli_scan_include_cname_emits_chain(tmp_path: Path, dns_server: tuple[str, int]) -> None:
@@ -274,6 +294,10 @@ def test_cli_scan_include_cname_emits_chain(tmp_path: Path, dns_server: tuple[st
     assert record["status"] == "resolved"
     assert record["ips"] == ["1.2.3.4"]
     assert record["cnames"] == ["a.res.test"]
+    assert record["dns_record_types"] == ["A", "CNAME"]
+    assert record["ttl_min"] == 60
+    assert record["ttl_max"] == 60
+    assert record["canonical_target"] == "a.res.test"
     summary = json.loads(proc.stderr.strip())
     assert summary["attempted"] == 1
     assert summary["resolved"] == 1
@@ -320,6 +344,10 @@ def test_cli_scan_include_cname_classifies_cname_only(
     assert record["status"] == "cname"
     assert record["ips"] == []
     assert record["cnames"] == ["missing.res.test"]
+    assert record["dns_record_types"] == ["CNAME"]
+    assert record["canonical_target"] == "missing.res.test"
+    assert "ttl_min" not in record
+    assert "ttl_max" not in record
     summary = json.loads(proc.stderr.strip())
     assert summary["attempted"] == 1
     assert summary["cname"] == 1

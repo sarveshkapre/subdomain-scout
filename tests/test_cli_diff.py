@@ -194,3 +194,67 @@ def test_diff_includes_cnames_when_present(tmp_path: Path) -> None:
     assert events[0]["subdomain"] == "a.example.com"
     assert events[0]["old"]["cnames"] == ["old.target.example.com"]
     assert events[0]["new"]["cnames"] == ["new.target.example.com"]
+
+
+def test_diff_includes_dns_enrichment_fields_when_present(tmp_path: Path) -> None:
+    old_path = tmp_path / "old.jsonl"
+    new_path = tmp_path / "new.jsonl"
+
+    old_path.write_text(
+        json.dumps(
+            {
+                "subdomain": "a.example.com",
+                "status": "resolved",
+                "ips": ["1.1.1.1"],
+                "dns_record_types": ["A"],
+                "ttl_min": 60,
+                "ttl_max": 60,
+                "canonical_target": "old.target.example.com",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    new_path.write_text(
+        json.dumps(
+            {
+                "subdomain": "a.example.com",
+                "status": "resolved",
+                "ips": ["1.1.1.1"],
+                "dns_record_types": ["A", "CNAME"],
+                "ttl_min": 60,
+                "ttl_max": 120,
+                "canonical_target": "new.target.example.com",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "subdomain_scout",
+            "diff",
+            "--old",
+            str(old_path),
+            "--new",
+            str(new_path),
+            "--only",
+            "changed",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0
+    events = [json.loads(line) for line in proc.stdout.splitlines() if line.strip()]
+    assert len(events) == 1
+    assert events[0]["kind"] == "changed"
+    assert events[0]["old"]["dns_record_types"] == ["A"]
+    assert events[0]["new"]["dns_record_types"] == ["A", "CNAME"]
+    assert events[0]["old"]["canonical_target"] == "old.target.example.com"
+    assert events[0]["new"]["canonical_target"] == "new.target.example.com"
+    assert events[0]["old"]["ttl_max"] == 60
+    assert events[0]["new"]["ttl_max"] == 120

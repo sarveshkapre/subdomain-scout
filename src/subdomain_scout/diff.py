@@ -11,6 +11,10 @@ class RecordView:
     status: str
     ips: list[str]
     cnames: list[str]
+    canonical_target: str | None
+    dns_record_types: list[str]
+    ttl_min: int | None
+    ttl_max: int | None
     error: str | None
 
     @classmethod
@@ -20,14 +24,55 @@ class RecordView:
         ips = [str(x) for x in ips_raw] if isinstance(ips_raw, list) else []
         cnames_raw = obj.get("cnames", [])
         cnames = [str(x) for x in cnames_raw] if isinstance(cnames_raw, list) else []
+        canonical_target_raw = obj.get("canonical_target", None)
+        canonical_target = (
+            str(canonical_target_raw).strip().lower()
+            if isinstance(canonical_target_raw, str) and canonical_target_raw.strip()
+            else None
+        )
+        dns_record_types_raw = obj.get("dns_record_types", [])
+        dns_record_types = (
+            [str(x).strip().upper() for x in dns_record_types_raw if str(x).strip()]
+            if isinstance(dns_record_types_raw, list)
+            else []
+        )
+        ttl_min_raw = obj.get("ttl_min", None)
+        ttl_min = (
+            int(ttl_min_raw)
+            if isinstance(ttl_min_raw, int) and not isinstance(ttl_min_raw, bool)
+            else None
+        )
+        ttl_max_raw = obj.get("ttl_max", None)
+        ttl_max = (
+            int(ttl_max_raw)
+            if isinstance(ttl_max_raw, int) and not isinstance(ttl_max_raw, bool)
+            else None
+        )
         err_raw = obj.get("error", None)
         error = None if err_raw is None else str(err_raw)
-        return cls(status=status, ips=ips, cnames=cnames, error=error)
+        return cls(
+            status=status,
+            ips=ips,
+            cnames=cnames,
+            canonical_target=canonical_target,
+            dns_record_types=dns_record_types,
+            ttl_min=ttl_min,
+            ttl_max=ttl_max,
+            error=error,
+        )
 
     def stable_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = {"status": self.status, "ips": self.ips}
         if self.cnames:
             payload["cnames"] = self.cnames
+        if self.canonical_target is not None:
+            payload["canonical_target"] = self.canonical_target
+        if self.dns_record_types:
+            payload["dns_record_types"] = self.dns_record_types
+        if self.ttl_min is not None:
+            payload["ttl_min"] = self.ttl_min
+        if self.ttl_max is not None:
+            payload["ttl_max"] = self.ttl_max
         if self.error is not None:
             payload["error"] = self.error
         return payload

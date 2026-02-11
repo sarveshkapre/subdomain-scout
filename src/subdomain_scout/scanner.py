@@ -16,7 +16,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator, TextIO
 
-from .dns_client import DnsQueryError, resolve_host
+from .dns_client import DnsQueryError, resolve_host_details
 from .validation import normalize_label
 
 
@@ -32,6 +32,10 @@ class Result:
     error_type: str | None = None
     error_code: int | None = None
     cnames: list[str] | None = None
+    canonical_target: str | None = None
+    dns_record_types: list[str] | None = None
+    ttl_min: int | None = None
+    ttl_max: int | None = None
     takeover: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -51,6 +55,14 @@ class Result:
             payload["error_code"] = self.error_code
         if self.cnames is not None:
             payload["cnames"] = self.cnames
+        if self.canonical_target is not None:
+            payload["canonical_target"] = self.canonical_target
+        if self.dns_record_types is not None:
+            payload["dns_record_types"] = self.dns_record_types
+        if self.ttl_min is not None:
+            payload["ttl_min"] = self.ttl_min
+        if self.ttl_max is not None:
+            payload["ttl_max"] = self.ttl_max
         if self.takeover is not None:
             payload["takeover"] = self.takeover
         return payload
@@ -71,22 +83,30 @@ def _resolve(
             ips = list(dict.fromkeys(ips))
             return Result(subdomain=name, ips=ips, status="resolved", elapsed_ms=_ms(start))
         else:
-            ips, cnames = resolve_host(name, nameservers=nameservers, timeout=timeout)
-            if not ips:
-                status = "cname" if include_cname and cnames else "not_found"
+            details = resolve_host_details(name, nameservers=nameservers, timeout=timeout)
+            if not details.ips:
+                status = "cname" if include_cname and details.cnames else "not_found"
                 return Result(
                     subdomain=name,
                     ips=[],
                     status=status,
                     elapsed_ms=_ms(start),
-                    cnames=cnames if include_cname and cnames else None,
+                    cnames=details.cnames if include_cname and details.cnames else None,
+                    canonical_target=details.canonical_target,
+                    dns_record_types=details.record_types or None,
+                    ttl_min=details.ttl_min,
+                    ttl_max=details.ttl_max,
                 )
             return Result(
                 subdomain=name,
-                ips=ips,
+                ips=details.ips,
                 status="resolved",
                 elapsed_ms=_ms(start),
-                cnames=cnames if include_cname and cnames else None,
+                cnames=details.cnames if include_cname and details.cnames else None,
+                canonical_target=details.canonical_target,
+                dns_record_types=details.record_types or None,
+                ttl_min=details.ttl_min,
+                ttl_max=details.ttl_max,
             )
     except socket.gaierror as e:
         not_found_errnos = {

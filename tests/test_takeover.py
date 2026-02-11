@@ -11,6 +11,7 @@ from subdomain_scout.takeover import (
     build_takeover_checker,
     load_fingerprint_catalog,
 )
+from subdomain_scout.version import get_version
 
 
 class _FakeResponse(io.BytesIO):
@@ -35,6 +36,7 @@ def test_takeover_checker_matches_default_fingerprint(monkeypatch: pytest.Monkey
             "http://dangling.example.com/",
         }
         assert timeout == 2.0
+        assert req.headers.get("User-agent") == f"subdomain-scout/{get_version()}"
         return _FakeResponse("There isn't a GitHub Pages site here.", status=404)
 
     monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)

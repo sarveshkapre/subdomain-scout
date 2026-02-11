@@ -18,4 +18,4 @@
 ## Next
 
 - Expand takeover fingerprint coverage with false-positive guardrails.
-- Expand DNS record enrichment beyond CNAME chain visibility (e.g., canonical target, TTLs, and record types) for better triage and debugging.
+- Add optional quiet/no-summary CLI mode for pipeline ergonomics while keeping NDJSON output stable.

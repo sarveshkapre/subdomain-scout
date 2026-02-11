@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+from .version import get_version
+
 
 @dataclass(frozen=True)
 class Fingerprint:
@@ -51,6 +53,9 @@ _DEFAULT_CATALOG = FingerprintCatalog(
         ),
     ),
 )
+
+
+_USER_AGENT = f"subdomain-scout/{get_version()}"
 
 
 def build_takeover_checker(
@@ -189,7 +194,7 @@ def _confidence_label(score: int) -> str:
 
 
 def _fetch_http_response(url: str, *, timeout: float) -> tuple[int, str] | None:
-    req = urllib.request.Request(url=url, headers={"User-Agent": "subdomain-scout/0.1.1"})
+    req = urllib.request.Request(url=url, headers={"User-Agent": _USER_AGENT})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             status = int(resp.getcode())

@@ -20,6 +20,24 @@ class DnsQueryError(Exception):
         return f"{self.message} (rcode={self.rcode})"
 
 
+@dataclass(frozen=True)
+class ResolvedHost:
+    ips: list[str]
+    cnames: list[str]
+    record_types: list[str]
+    ttl_min: int | None
+    ttl_max: int | None
+    canonical_target: str | None
+
+
+_QTYPE_LABELS = {1: "A", 28: "AAAA"}
+_RECORD_TYPE_ORDER = ("A", "AAAA", "CNAME")
+
+
+def _ordered_record_types(values: set[str]) -> list[str]:
+    return [record_type for record_type in _RECORD_TYPE_ORDER if record_type in values]
+
+
 def parse_nameserver(spec: str) -> tuple[str, int]:
     """
     Parse a nameserver spec into (ip, port).
@@ -106,8 +124,7 @@ def resolve_ips(
     nameservers: Sequence[tuple[str, int]],
     timeout: float,
 ) -> list[str]:
-    ips, _cnames = resolve_host(name, nameservers=nameservers, timeout=timeout)
-    return ips
+    return resolve_host_details(name, nameservers=nameservers, timeout=timeout).ips
 
 
 def resolve_host(
@@ -117,6 +134,22 @@ def resolve_host(
     timeout: float,
     max_cname_depth: int = 8,
 ) -> tuple[list[str], list[str]]:
+    details = resolve_host_details(
+        name,
+        nameservers=nameservers,
+        timeout=timeout,
+        max_cname_depth=max_cname_depth,
+    )
+    return details.ips, details.cnames
+
+
+def resolve_host_details(
+    name: str,
+    *,
+    nameservers: Sequence[tuple[str, int]],
+    timeout: float,
+    max_cname_depth: int = 8,
+) -> ResolvedHost:
     if timeout <= 0:
         raise ValueError("timeout must be > 0")
     if not nameservers:
@@ -127,6 +160,8 @@ def resolve_host(
     ips: list[str] = []
     seen: set[str] = set()
     cnames_chain: list[str] = []
+    record_types_seen: set[str] = set()
+    ttl_values: list[int] = []
 
     # Query both A and AAAA for parity with getaddrinfo(). If we get a CNAME-only
     # response, follow the chain up to `max_cname_depth`.
@@ -147,6 +182,9 @@ def resolve_host(
                 if cname in observed_cnames:
                     continue
                 observed_cnames.append(cname)
+            if resp.answers:
+                record_types_seen.add(_QTYPE_LABELS[qtype])
+                ttl_values.extend(resp.answer_ttls)
             for ip in resp.answers:
                 if ip in seen:
                     continue
@@ -156,21 +194,58 @@ def resolve_host(
         primary_cname = observed_cnames[0].strip().strip(".").lower() if observed_cnames else ""
         if primary_cname and (not cnames_chain or cnames_chain[-1] != primary_cname):
             cnames_chain.append(primary_cname)
+        if observed_cnames:
+            record_types_seen.add("CNAME")
+
+        canonical_target = cnames_chain[-1] if cnames_chain else None
+        ttl_min = min(ttl_values) if ttl_values else None
+        ttl_max = max(ttl_values) if ttl_values else None
 
         if ips:
-            return ips, cnames_chain
+            return ResolvedHost(
+                ips=ips,
+                cnames=cnames_chain,
+                record_types=_ordered_record_types(record_types_seen),
+                ttl_min=ttl_min,
+                ttl_max=ttl_max,
+                canonical_target=canonical_target,
+            )
 
         if not primary_cname:
-            return [], cnames_chain
+            return ResolvedHost(
+                ips=[],
+                cnames=cnames_chain,
+                record_types=_ordered_record_types(record_types_seen),
+                ttl_min=ttl_min,
+                ttl_max=ttl_max,
+                canonical_target=canonical_target,
+            )
 
         # Follow the first observed CNAME deterministically; record the chain for debugging/triage.
         nxt = primary_cname
         if nxt in seen_names:
-            return [], cnames_chain
+            return ResolvedHost(
+                ips=[],
+                cnames=cnames_chain,
+                record_types=_ordered_record_types(record_types_seen),
+                ttl_min=ttl_min,
+                ttl_max=ttl_max,
+                canonical_target=canonical_target,
+            )
         seen_names.add(nxt)
         current = nxt
 
-    return [], cnames_chain
+    canonical_target = cnames_chain[-1] if cnames_chain else None
+    ttl_min = min(ttl_values) if ttl_values else None
+    ttl_max = max(ttl_values) if ttl_values else None
+    return ResolvedHost(
+        ips=[],
+        cnames=cnames_chain,
+        record_types=_ordered_record_types(record_types_seen),
+        ttl_min=ttl_min,
+        ttl_max=ttl_max,
+        canonical_target=canonical_target,
+    )
 
 
 def _query_rrset(
@@ -232,6 +307,7 @@ class _DnsParsed:
     truncated: bool
     answers: list[str]
     cnames: list[str]
+    answer_ttls: list[int]
 
 
 def _udp_query(
@@ -330,11 +406,12 @@ def _parse_response(data: bytes, *, tid: int, qtype: int) -> _DnsParsed:
 
     answers: list[str] = []
     cnames: list[str] = []
+    answer_ttls: list[int] = []
     for _ in range(an):
         offset = _skip_name(data, offset)
         if offset + 10 > len(data):
             raise ValueError("malformed dns answer header")
-        rtype, rclass, _ttl, rdlen = struct.unpack("!HHIH", data[offset : offset + 10])
+        rtype, rclass, ttl, rdlen = struct.unpack("!HHIH", data[offset : offset + 10])
         offset += 10
         if offset + rdlen > len(data):
             raise ValueError("malformed dns rdata")
@@ -356,10 +433,18 @@ def _parse_response(data: bytes, *, tid: int, qtype: int) -> _DnsParsed:
             continue
         if rtype == 1 and rdlen == 4:
             answers.append(socket.inet_ntoa(rdata))
+            answer_ttls.append(int(ttl))
         elif rtype == 28 and rdlen == 16:
             answers.append(socket.inet_ntop(socket.AF_INET6, rdata))
+            answer_ttls.append(int(ttl))
 
-    return _DnsParsed(rcode=rcode, truncated=truncated, answers=answers, cnames=cnames)
+    return _DnsParsed(
+        rcode=rcode,
+        truncated=truncated,
+        answers=answers,
+        cnames=cnames,
+        answer_ttls=answer_ttls,
+    )
 
 
 def _decode_name(msg: bytes, offset: int) -> tuple[str, int]:
@@ -416,4 +501,11 @@ def _skip_name(msg: bytes, offset: int) -> int:
     raise ValueError("name compression loop detected")
 
 
-__all__ = ["DnsQueryError", "parse_nameserver", "resolve_host", "resolve_ips"]
+__all__ = [
+    "DnsQueryError",
+    "ResolvedHost",
+    "parse_nameserver",
+    "resolve_host",
+    "resolve_host_details",
+    "resolve_ips",
+]

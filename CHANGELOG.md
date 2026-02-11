@@ -8,6 +8,8 @@
 - Add best-effort wildcard DNS detection (`--detect-wildcard`) and mark matching records as `status=wildcard`.
 - Follow CNAME chains in custom resolver mode for fewer false negatives on CNAME-only names.
 - Add `scan --include-cname` (requires `--resolver`/`--resolver-file`) to emit observed CNAME chains and classify CNAME-only results as `status=cname`.
+- Add resolver-mode DNS enrichment fields (`canonical_target`, `dns_record_types`, `ttl_min`, `ttl_max`) for better triage/debugging.
+- Include resolver-mode DNS enrichment fields in `diff` change detection when present.
 - Improve wildcard detection for multi-level labels by probing per-suffix wildcards (e.g. `*.dev.example.com`).
 - Reduce wildcard false positives on CDN-backed domains via `--wildcard-threshold` and optional HTTP verification (`--wildcard-verify-http`).
 - Add flexible scan output filtering via `--status` and retry on transient DNS errors (`--retries`).
@@ -23,6 +25,7 @@
 - Add resume/append scan mode via `scan --resume` (skip already-seen labels when writing to an existing output file).
 - Add strict domain/label validation to fail fast on malformed hostnames.
 - Add optional takeover checks during scans (`--takeover-check`) using a versioned fingerprint catalog with confidence scoring and custom catalog override support.
+- Source takeover HTTP user-agent version dynamically from runtime package version metadata.
 - Add `scan --progress` to print periodic progress updates to stderr.
 - Add `schema_version` to JSON summary payloads (`scan/ct/diff --summary-json`).
 
