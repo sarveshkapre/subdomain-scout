@@ -4,6 +4,42 @@ Structured project memory for autonomous maintenance runs.
 
 ## Decisions
 
+### 2026-02-11 - Ship resolver-mode DNS enrichment metadata and diff parity
+- Decision: Added additive resolver-mode DNS enrichment fields to scan output (`canonical_target`, `dns_record_types`, `ttl_min`, `ttl_max`) and included the same fields in `diff` comparison payloads.
+- Why: Market baseline expects richer DNS context for triage/debugging, and the roadmap explicitly called out canonical target + TTL + record-type enrichment as the next production-ready gap.
+- Evidence:
+  - Code: `src/subdomain_scout/dns_client.py`, `src/subdomain_scout/scanner.py`, `src/subdomain_scout/diff.py`
+  - Tests: `tests/test_dns_client.py`, `tests/test_cli_diff.py`
+  - Docs: `README.md`, `ROADMAP.md`, `CHANGELOG.md`
+  - Validation: `make check`; resolver-mode scan + diff smoke commands (see Verification Evidence)
+  - CI: `https://github.com/sarveshkapre/subdomain-scout/actions/runs/21896030585`
+- Commit: `63b5828`
+- Confidence: high
+- Trust label: trusted (local code/tests + CI)
+- Follow-ups:
+  - Add `scan --quiet`/`--no-summary` for cleaner machine pipelines.
+  - Expand takeover fingerprints with provider-specific false-positive guards.
+
+### 2026-02-11 - Remove takeover user-agent version drift
+- Decision: Takeover HTTP probes now use a dynamic user-agent string from `get_version()` instead of a hard-coded version token.
+- Why: Hard-coded user-agent versions drift as releases advance, which hurts observability and can mislead downstream logs/debugging.
+- Evidence:
+  - Code: `src/subdomain_scout/takeover.py`
+  - Tests: `tests/test_takeover.py`
+  - Validation: `make check`
+- Commit: `63b5828`
+- Confidence: high
+- Trust label: trusted (local code/tests)
+
+### 2026-02-11 - Prioritize next backlog from bounded market scan
+- Decision: Prioritized backlog focus on takeover catalog breadth + guardrails, CT resiliency (retry/cache), and machine-output ergonomics (`--quiet`), while treating resolver/cname/wildcard/summary contracts as parity-complete for now.
+- Why: Bounded scan across active subdomain tools shows those capabilities as common baseline differentiators and directly aligned with product-market-fit for production workflows.
+- Evidence:
+  - Sources (external): `dnsx` usage docs, `subfinder` usage docs, `puredns` README, `shuffledns` README, `OWASP Amass` resolver config wiki, `subzy`, `can-i-take-over-xyz` (captured in `CLONE_FEATURES.md` Insights).
+- Commit: n/a (planning signal)
+- Confidence: medium
+- Trust label: untrusted (external docs/web)
+
 ### 2026-02-10 - Preserve CNAME metadata when annotating scan results
 - Decision: Keep `cnames` intact when the scanner re-labels a result as `wildcard` or attaches a `takeover` object, by using `dataclasses.replace()` instead of reconstructing partial `Result` objects.
 - Why: Reconstructing `Result` objects in the scanner dropped `cnames`, which made `--include-cname` output inconsistent (especially when `--takeover-check` or wildcard heuristics were enabled).
@@ -140,6 +176,11 @@ Structured project memory for autonomous maintenance runs.
 - Trust label: verified-local
 
 ## Verification Evidence
+
+- `make check` (pass; 50 tests)
+- `printf "www\n" | .venv/bin/python -m subdomain_scout scan --domain example.com --wordlist - --out - --only-resolved --resolver 1.1.1.1 --include-cname --timeout 2 --concurrency 1 --summary-json` (pass; emitted `dns_record_types` + TTL range)
+- `tmpdir=$(mktemp -d) && printf '{"subdomain":"a.example.com","status":"resolved","ips":["1.1.1.1"],"dns_record_types":["A"],"ttl_min":60,"ttl_max":60}'"\\n" > "$tmpdir/old.jsonl" && printf '{"subdomain":"a.example.com","status":"resolved","ips":["1.1.1.1"],"dns_record_types":["A","CNAME"],"ttl_min":60,"ttl_max":120,"canonical_target":"alias.example.net"}'"\\n" > "$tmpdir/new.jsonl" && .venv/bin/python -m subdomain_scout diff --old "$tmpdir/old.jsonl" --new "$tmpdir/new.jsonl" --only changed && rm -rf "$tmpdir"` (pass)
+- `printf "www\n" | .venv/bin/python -m subdomain_scout scan --domain example.com --wordlist - --out - --only-resolved --takeover-check --takeover-timeout 2 --timeout 2 --concurrency 1 --summary-json` (pass; `takeover_checked=1`, `takeover_suspected=0`)
 
 - `make check` (pass; 47 tests)
 - `printf "www\n" | .venv/bin/python -m subdomain_scout scan --domain example.com --wordlist - --out - --only-resolved --concurrency 1 --timeout 2 --summary-json` (pass)

@@ -7,14 +7,38 @@
 - Gaps found during codebase exploration
 
 ## Candidate Features To Do
-- [ ] (P2) Expand built-in takeover fingerprints and add false-positive guard tests per provider. [impact:3 effort:3 fit:4 diff:3 risk:2 conf:3]
+- [ ] (P2) Expand built-in takeover fingerprints and add false-positive guard tests per provider. [impact:4 effort:3 fit:4 diff:3 risk:2 conf:3]
+- [ ] (P2) Add optional takeover response guards (`required_headers`, `excluded_substrings`) to reduce noisy matches on generic error pages. [impact:3 effort:3 fit:4 diff:4 risk:2 conf:3]
+- [ ] (P2) Add optional CT retry/backoff and lightweight on-disk caching to reduce flakiness and rate-limit exposure. [impact:3 effort:3 fit:4 diff:2 risk:2 conf:3]
+- [ ] (P2) Add `scan --hosts` mode to accept full hostnames (one per line) in addition to label+domain composition. [impact:3 effort:3 fit:4 diff:3 risk:2 conf:3]
+- [ ] (P2) Add `scan --quiet` / `--no-summary` so machine pipelines can suppress all non-record stderr output. [impact:3 effort:2 fit:4 diff:2 risk:1 conf:4]
+- [ ] (P2) Add bounded takeover concurrency controls separate from DNS concurrency to avoid outbound HTTP spikes. [impact:3 effort:2 fit:4 diff:3 risk:2 conf:3]
 - [ ] (P3) Add a benchmark fixture for large wordlists to track scan throughput regressions. [impact:2 effort:3 fit:3 diff:1 risk:1 conf:3]
 - [ ] (P3) Add release automation for semantic version bump + changelog cut. [impact:2 effort:3 fit:3 diff:1 risk:2 conf:3]
-- [ ] (P3) Add `scan --hosts` mode to accept full hostnames (one per line) in addition to label+domain composition. [impact:2 effort:3 fit:3 diff:1 risk:2 conf:3]
-- [ ] (P3) Add optional CT caching (disk) and retry/backoff to reduce flakiness and rate-limit exposure. [impact:2 effort:3 fit:3 diff:1 risk:2 conf:2]
-- [ ] (P3) Add a `--quiet`/`--no-summary` mode and ensure all human output goes to stderr (stdout always machine output). [impact:2 effort:2 fit:3 diff:1 risk:1 conf:3]
+- [ ] (P3) Add JSON schema artifacts for `scan_summary`, `ct_summary`, and `diff_summary` for downstream contract validation. [impact:2 effort:2 fit:3 diff:2 risk:1 conf:3]
+- [ ] (P3) Add resolver health preflight (`scan --resolver-healthcheck`) to fail fast on dead resolver lists. [impact:2 effort:2 fit:3 diff:2 risk:1 conf:3]
+- [ ] (P3) Add CI matrix coverage for multiple Python versions and OS targets. [impact:2 effort:3 fit:3 diff:1 risk:1 conf:4]
+- [ ] (P3) Add property-based tests for hostname/domain normalization edge cases. [impact:2 effort:2 fit:3 diff:1 risk:1 conf:3]
 
 ## Implemented
+- [x] (2026-02-11) Add resolver-mode DNS enrichment fields (`canonical_target`, `dns_record_types`, `ttl_min`, `ttl_max`) and keep output schema additive.
+  - Evidence: `src/subdomain_scout/dns_client.py`, `src/subdomain_scout/scanner.py`, `tests/test_dns_client.py`, `README.md`, `CHANGELOG.md`
+  - Commit: `63b5828`
+  - Verification:
+    - `make check` (pass; 50 tests)
+    - `printf "www\n" | .venv/bin/python -m subdomain_scout scan --domain example.com --wordlist - --out - --only-resolved --resolver 1.1.1.1 --include-cname --timeout 2 --concurrency 1 --summary-json` (pass; emitted `dns_record_types` and TTL range)
+  - CI: `21896030585` (success)
+- [x] (2026-02-11) Include DNS enrichment fields in `diff` comparisons and add deterministic regression tests.
+  - Evidence: `src/subdomain_scout/diff.py`, `tests/test_cli_diff.py`
+  - Commit: `63b5828`
+  - Verification:
+    - `make check` (pass; 50 tests)
+    - `tmpdir=$(mktemp -d) && printf '{"subdomain":"a.example.com","status":"resolved","ips":["1.1.1.1"],"dns_record_types":["A"],"ttl_min":60,"ttl_max":60}'"\n" > "$tmpdir/old.jsonl" && printf '{"subdomain":"a.example.com","status":"resolved","ips":["1.1.1.1"],"dns_record_types":["A","CNAME"],"ttl_min":60,"ttl_max":120,"canonical_target":"alias.example.net"}'"\n" > "$tmpdir/new.jsonl" && .venv/bin/python -m subdomain_scout diff --old "$tmpdir/old.jsonl" --new "$tmpdir/new.jsonl" --only changed && rm -rf "$tmpdir"` (pass)
+- [x] (2026-02-11) Remove takeover HTTP user-agent version drift by sourcing the user-agent version from runtime package version helper.
+  - Evidence: `src/subdomain_scout/takeover.py`, `tests/test_takeover.py`
+  - Commit: `63b5828`
+  - Verification:
+    - `make check` (pass; 50 tests)
 - [x] (2026-02-10) Preserve `cnames` metadata when scan results are re-labeled (wildcard heuristic) or annotated (takeover evidence); add a regression test.
   - Evidence: `src/subdomain_scout/scanner.py`, `tests/test_scanner.py`
   - Commit: `b705613`
@@ -119,13 +143,20 @@ printf 'www\n' | .venv/bin/python -m subdomain_scout scan --domain example.com -
 - Versioned fingerprint catalogs make detection behavior auditable and allow controlled custom overrides without code changes.
 - Label deduplication is a low-risk performance win that reduces DNS calls and improves runtime determinism for repeated/merged sources.
 - Retry count visibility (`attempts`/`retries`) is important for CI troubleshooting when resolvers are flaky but eventually succeed.
+- Gap map (2026-02-11):
+  - Missing: richer takeover provider coverage and stronger anti-false-positive guards.
+  - Weak: machine-only stderr controls (`--quiet`/`--no-summary`) and CT robustness (retry/cache).
+  - Parity: resolver list input, wildcard thresholding, CNAME visibility, and summary JSON contracts.
+  - Differentiator opportunity: keep single-binary dependency-free UX while adding production-grade DNS metadata (`canonical_target`, TTL range, record types).
 - Market scan notes (untrusted):
   - Resolver lists and resume are baseline UX (e.g., ProjectDiscovery `dnsx` has `-r` resolver list input and `-resume`). Sources: https://docs.projectdiscovery.io/opensource/dnsx/usage and https://github.com/projectdiscovery/dnsx
   - Wildcard handling often uses threshold-style heuristics (e.g., `dnsx` has `-wildcard-threshold`, default 5). Source: https://docs.projectdiscovery.io/opensource/dnsx/usage
   - CNAME visibility is baseline in toolchains (e.g., `dnsx` supports `-cname` queries and response display flags like `-resp`). Source: https://docs.projectdiscovery.io/opensource/dnsx/usage
+  - Passive-source breadth is an expected baseline in mature tools (e.g., `subfinder` supports multiple providers and source controls). Source: https://docs.projectdiscovery.io/opensource/subfinder/usage
   - Tools like `puredns` emphasize wildcard filtering as a core feature and use resolver list files by default. Source: https://github.com/d3mondev/puredns
   - Tools like `shuffledns` describe "smart wildcard elimination" using a per-IP thresholding heuristic. Source: https://github.com/projectdiscovery/shuffledns
   - Amass exposes resolver configuration for controlling DNS behavior across runs. Source: https://github.com/OWASP/Amass/wiki/The-Configuration-File
+  - Dedicated takeover tools (`subzy`) and curated fingerprint repos (`can-i-take-over-xyz`) indicate fingerprint freshness and provider breadth are table-stakes for takeover workflows. Sources: https://github.com/PentestPad/subzy and https://github.com/EdOverflow/can-i-take-over-xyz
 
 ## Notes
 - This file is maintained by the autonomous clone loop.
